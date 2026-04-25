@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:rotina_kids_plus/core/theme/app_routes.dart';
+import 'package:rotina_kids_plus/core/routes/app_routes.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/mock_data_repository.dart';
 

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:rotina_kids_plus/core/theme/app_routes.dart';
+import 'package:rotina_kids_plus/core/routes/app_routes.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
