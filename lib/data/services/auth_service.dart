@@ -4,35 +4,40 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // Stream para monitorar o estado da autenticação
   Stream<User?> get userState => _auth.authStateChanges();
 
-  // Login com Google
+  // Login com Google atualizado para a versão 7.0+
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      // Inicia o fluxo de autenticação do Google
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null;
+      // 1. A inicialização agora é obrigatória antes de qualquer chamada
+      await GoogleSignIn.instance.initialize();
 
-      // Obtém os detalhes da autenticação
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      // 2. O antigo signIn() foi substituído pelo authenticate()
+      final GoogleSignInAccount googleUser = await GoogleSignIn.instance
+          .authenticate();
 
-      // Cria uma nova credencial
+      // 3. Autenticação e Autorização agora são processos separados
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+
+      // Solicitamos os escopos explicitamente para obter o Access Token
+      final clientAuth = await googleUser.authorizationClient.authorizeScopes([
+        'email',
+        'profile',
+      ]);
+
+      // 4. Montamos a credencial do Firebase juntando as duas partes
       final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
+        accessToken: clientAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // Faz o login no Firebase
       final UserCredential userCredential = await _auth.signInWithCredential(
         credential,
       );
 
-      // Salva ou atualiza os dados do usuário no Firestore
       if (userCredential.user != null) {
         await _updateUserData(userCredential.user!);
       }
@@ -44,7 +49,7 @@ class AuthService {
     }
   }
 
-  // Atualiza os dados do usuário no Firestore (Cloud Firestore)
+  // Atualiza os dados do usuário no Firestore
   Future<void> _updateUserData(User user) async {
     DocumentReference userRef = _db.collection('users').doc(user.uid);
 
@@ -54,13 +59,12 @@ class AuthService {
       'displayName': user.displayName,
       'photoURL': user.photoURL,
       'lastSignIn': DateTime.now(),
-      // 'role' será definido na tela de seleção de modo se for o primeiro acesso
     }, SetOptions(merge: true));
   }
 
   // Logout
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
+    await GoogleSignIn.instance.signOut();
     await _auth.signOut();
   }
 }

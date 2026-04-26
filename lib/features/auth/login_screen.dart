@@ -83,9 +83,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
+                        // Usando uma URL estável e o errorBuilder para evitar telas quebradas
                         icon: Image.network(
-                          'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
+                          'https://img.icons8.com/color/48/000000/google-logo.png',
                           height: 24,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(
+                              Icons.g_mobiledata,
+                              size: 32,
+                              color: Colors.black87,
+                            );
+                          },
                         ),
                         label: const Text('Entrar com Google'),
                         onPressed: _handleGoogleSignIn,

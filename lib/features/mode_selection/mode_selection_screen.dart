@@ -41,7 +41,7 @@ class ModeSelectionScreen extends StatelessWidget {
                     style: TextStyle(fontSize: 18),
                   ),
                 ),
-                onPressed: () => context.go('/child-home'),
+                onPressed: () => context.go('/child-selection'),
               ),
             ],
           ),

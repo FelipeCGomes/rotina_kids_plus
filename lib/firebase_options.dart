@@ -66,6 +66,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '872081760818',
     projectId: 'rotina-kids-plus',
     storageBucket: 'rotina-kids-plus.firebasestorage.app',
+    androidClientId: '872081760818-e46950av3c5a1aggmrfnq9q9jpbvi4sj.apps.googleusercontent.com',
+    iosClientId: '872081760818-5r9ucjmu8pnujt1bl03oa2bn148prlst.apps.googleusercontent.com',
     iosBundleId: 'br.com.felipe.rotinakidsplus',
   );
 

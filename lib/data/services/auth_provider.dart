@@ -1,8 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// Importação correta apontando para o arquivo na mesma pasta
-import 'auth_service.dart';
+// Usando o import absoluto (garante que ele ache o arquivo)
+import 'package:rotina_kids_plus/data/services/auth_service.dart';
 
 // Provider do serviço de autenticação
 final authServiceProvider = Provider<AuthService>((ref) {
