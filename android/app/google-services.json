@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "872081760818",
+    "project_id": "rotina-kids-plus",
+    "storage_bucket": "rotina-kids-plus.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:872081760818:android:1d76ef4049b1ba8ac0122b",
+        "android_client_info": {
+          "package_name": "br.com.felipe.rotinakidsplus"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBAyfR2ppCr-fbPt5DB4fPVAbT6AphQQfQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

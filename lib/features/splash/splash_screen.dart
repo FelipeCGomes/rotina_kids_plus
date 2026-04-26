@@ -1,63 +1,60 @@
 import 'package:flutter/material.dart';
-import 'package:rotina_kids_plus/core/routes/app_routes.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../data/services/auth_provider.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _navigateToNext();
+    _checkAuth();
   }
 
-  Future<void> _navigateToNext() async {
-    await Future.delayed(const Duration(seconds: 3));
+  Future<void> _checkAuth() async {
+    // Pequeno atraso para animação da logo
+    await Future.delayed(const Duration(seconds: 2));
+
+    // Verificamos o estado atual da stream de autenticação
+    final user = ref.read(authStateProvider).value;
+
     if (mounted) {
-      Navigator.pushReplacementNamed(context, AppRoutes.chooseMode);
+      if (user != null) {
+        // Se estiver logado, vai para seleção de modo (ou home se já tiver modo salvo)
+        context.go('/mode-selection');
+      } else {
+        // Se não estiver logado, vai para a tela de login
+        context.go('/login');
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blueAccent,
+      backgroundColor: Theme.of(context).colorScheme.primary,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.attach_money_rounded,
-                size: 80,
-                color: Colors.green,
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
+            const Icon(Icons.child_care, size: 100, color: Colors.white),
+            const SizedBox(height: 20),
+            Text(
               'Rotina Kids+',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 32,
-                fontWeight: FontWeight.bold,
                 color: Colors.white,
+                fontWeight: FontWeight.bold,
               ),
             ),
+            const SizedBox(height: 20),
+            const CircularProgressIndicator(color: Colors.white),
           ],
         ),
       ),

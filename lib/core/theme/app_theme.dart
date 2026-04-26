@@ -1,29 +1,30 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static ThemeData get lightTheme {
-    return ThemeData(
-      useMaterial3: true,
-      colorSchemeSeed: Colors.blueAccent,
+  static ThemeData get lightTheme => ThemeData(
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: const Color(0xFF6C63FF), // Roxo suave infantil
       brightness: Brightness.light,
-      cardTheme: CardThemeData(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
-    );
-  }
+    ),
+    fontFamily: 'Nunito', // Recomendado adicionar no pubspec
+  );
 
-  static ThemeData get darkTheme {
-    return ThemeData(
-      useMaterial3: true,
-      colorSchemeSeed: Colors.blueAccent,
+  static ThemeData get darkTheme => ThemeData(
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: const Color(0xFF6C63FF),
       brightness: Brightness.dark,
-      cardTheme: CardThemeData(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
-    );
-  }
+    ),
+  );
+
+  // Tema Preto e Branco / Alto Contraste
+  static ThemeData get highContrastTheme => ThemeData(
+    useMaterial3: true,
+    colorScheme: const ColorScheme.highContrastLight(
+      primary: Colors.black,
+      secondary: Colors.black87,
+      surface: Colors.white,
+    ),
+  );
 }

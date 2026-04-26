@@ -1,90 +1,98 @@
 import 'package:flutter/material.dart';
-import '../../core/routes/app_routes.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../data/services/auth_provider.dart';
 
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
+
+  @override
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  bool _isLoading = false;
+
+  Future<void> _handleGoogleSignIn() async {
+    setState(() => _isLoading = true);
+
+    final authService = ref.read(authServiceProvider);
+    final user = await authService.signInWithGoogle();
+
+    if (user != null) {
+      if (mounted) context.go('/mode-selection');
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Falha ao entrar com Google. Tente novamente.'),
+          ),
+        );
+      }
+    }
+
+    if (mounted) setState(() => _isLoading = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Acesso do Responsável')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Icon(
-              Icons.lock_person_rounded,
-              size: 80,
-              color: Colors.blueAccent,
-            ),
-            const SizedBox(height: 32),
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'E-mail',
-                prefixIcon: const Icon(Icons.email_outlined),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+      body: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Theme.of(context).colorScheme.primary,
+              Theme.of(context).colorScheme.secondary,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 30),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.child_care, size: 100, color: Colors.white),
+                const SizedBox(height: 20),
+                const Text(
+                  'Rotina Kids+',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'Senha',
-                prefixIcon: const Icon(Icons.lock_outline),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 10),
+                const Text(
+                  'Organize a rotina e transforme tarefas em recompensas.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16, color: Colors.white70),
                 ),
-              ),
+                const SizedBox(height: 60),
+                _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black87,
+                          minimumSize: const Size(double.infinity, 50),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: Image.network(
+                          'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
+                          height: 24,
+                        ),
+                        label: const Text('Entrar com Google'),
+                        onPressed: _handleGoogleSignIn,
+                      ),
+              ],
             ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () =>
-                    Navigator.pushNamed(context, AppRoutes.forgotPassword),
-                child: const Text('Esqueci minha senha'),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.blueAccent,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () =>
-                  Navigator.pushReplacementNamed(context, AppRoutes.parentHome),
-              child: const Text(
-                'Entrar',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () {},
-              icon: const Icon(Icons.g_mobiledata, size: 28),
-              label: const Text(
-                'Entrar com Google',
-                style: TextStyle(fontSize: 16),
-              ),
-            ),
-            const SizedBox(height: 24),
-            TextButton(
-              onPressed: () => Navigator.pushNamed(context, AppRoutes.register),
-              child: const Text('Ainda não tem conta? Crie aqui.'),
-            ),
-          ],
+          ),
         ),
       ),
     );
