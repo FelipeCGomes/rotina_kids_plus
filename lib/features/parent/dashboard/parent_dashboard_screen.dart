@@ -3,18 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../data/models/child_model.dart';
 import '../../../data/services/child_providers.dart';
-import '../../../data/services/firestore_providers.dart'; // Importação necessária para ler as tarefas de hoje
+import '../../../data/services/firestore_providers.dart';
 
 class ParentDashboardScreen extends ConsumerWidget {
   const ParentDashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 1. Escuta a lista de filhos do Firestore em tempo real
     final childrenAsync = ref.watch(parentChildrenStreamProvider);
-
-    // 2. Escuta qual criança está selecionada no momento
-    final selectedChild = ref.watch(selectedChildProvider);
+    final selectedChildSnapshot = ref.watch(selectedChildProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -33,45 +30,51 @@ class ParentDashboardScreen extends ConsumerWidget {
         error: (err, stack) =>
             Center(child: Text('Erro ao carregar dados: $err')),
         data: (children) {
-          // Se não houver crianças cadastradas, mostra tela de incentivo
           if (children.isEmpty) {
             return _buildEmptyState(context);
           }
 
-          // Se houver crianças mas nenhuma selecionada, seleciona a primeira da lista
-          if (selectedChild == null && children.isNotEmpty) {
+          if (selectedChildSnapshot == null ||
+              !children.any((c) => c.id == selectedChildSnapshot.id)) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               ref.read(selectedChildProvider.notifier).state = children.first;
             });
             return const Center(child: CircularProgressIndicator());
           }
 
-          // Renderiza o Dashboard com a criança selecionada
-          return _buildDashboardContent(context, ref, children, selectedChild!);
+          final liveChild = children.firstWhere(
+            (c) => c.id == selectedChildSnapshot.id,
+          );
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(parentChildrenStreamProvider);
+              ref.invalidate(todayTasksStreamProvider(liveChild.id));
+              await Future.delayed(const Duration(milliseconds: 500));
+            },
+            child: _buildDashboardContent(context, ref, children, liveChild),
+          );
         },
       ),
     );
   }
 
-  // Conteúdo principal do Dashboard quando há dados
   Widget _buildDashboardContent(
     BuildContext context,
     WidgetRef ref,
     List<ChildModel> allChildren,
     ChildModel currentChild,
   ) {
-    // Escuta as tarefas de hoje para calcular o progresso real
     final tasksAsync = ref.watch(todayTasksStreamProvider(currentChild.id));
 
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Card de Resumo da Criança Selecionada
           Card(
             elevation: 4,
-            shadowColor: Colors.black26,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
@@ -95,7 +98,6 @@ class ParentDashboardScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Nome da criança + Botão de Editar
                         Row(
                           children: [
                             Expanded(
@@ -105,7 +107,6 @@ class ParentDashboardScreen extends ConsumerWidget {
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,
                                 ),
-                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -119,11 +120,6 @@ class ParentDashboardScreen extends ConsumerWidget {
                                 '/add-child',
                                 extra: currentChild,
                               ),
-                              constraints:
-                                  const BoxConstraints(), // Reduz o espaço em volta do botão
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                              ),
                             ),
                           ],
                         ),
@@ -131,8 +127,6 @@ class ParentDashboardScreen extends ConsumerWidget {
                           'Nível ${currentChild.level} • ${currentChild.currentXp} XP',
                         ),
                         const SizedBox(height: 10),
-
-                        // Barra de Progresso Real
                         tasksAsync.when(
                           data: (tasks) {
                             final total = tasks.length;
@@ -143,10 +137,6 @@ class ParentDashboardScreen extends ConsumerWidget {
                                       t.status == 'approved',
                                 )
                                 .length;
-                            final progressValue = total == 0
-                                ? 0.0
-                                : done / total;
-
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -158,14 +148,11 @@ class ParentDashboardScreen extends ConsumerWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                ClipRRect(
+                                LinearProgressIndicator(
+                                  value: total == 0 ? 0.0 : done / total,
+                                  minHeight: 8,
                                   borderRadius: BorderRadius.circular(10),
-                                  child: LinearProgressIndicator(
-                                    value: progressValue,
-                                    minHeight: 8,
-                                    backgroundColor: Colors.grey[200],
-                                    color: Colors.amber,
-                                  ),
+                                  color: Colors.amber,
                                 ),
                               ],
                             );
@@ -233,7 +220,7 @@ class ParentDashboardScreen extends ConsumerWidget {
                 child: _buildSummaryCard(
                   context,
                   title: 'Tempo de Tela',
-                  value: '0h 00m', // Fictício por enquanto
+                  value: '0h 00m',
                   icon: Icons.smartphone,
                   color: Colors.purple,
                 ),
@@ -310,7 +297,6 @@ class ParentDashboardScreen extends ConsumerWidget {
     );
   }
 
-  // Modal para trocar de criança
   void _showChildSelector(
     BuildContext context,
     WidgetRef ref,

@@ -1,18 +1,19 @@
 class ChildModel {
   final String id;
   final String parentId;
-  final String name; // Nome
-  final String lastName; // Sobrenome
-  final DateTime birthDate; // Data de Nascimento
-  final String sex; // Masculino / Feminino
-  final List<String> disorders; // TEA, TDAH, etc.
-  final bool isStudying; // Sim / Não
-  final String? educationLevel; // Nível de ensino
+  final String name;
+  final String lastName;
+  final DateTime birthDate;
+  final String sex;
+  final List<String> disorders;
+  final bool isStudying;
+  final String? educationLevel;
   final String avatarId;
   final int currentXp;
   final int totalXp;
   final int level;
   final String? pinCode;
+  final List<String> unlockedAvatars; // <-- NOVO: Guarda os avatares comprados
 
   ChildModel({
     required this.id,
@@ -29,6 +30,13 @@ class ChildModel {
     this.totalXp = 0,
     this.level = 1,
     this.pinCode,
+    // Avatares básicos já vêm desbloqueados de fábrica:
+    this.unlockedAvatars = const [
+      'avatar_boy',
+      'avatar_girl',
+      'avatar_dino',
+      'avatar_hero',
+    ],
   });
 
   Map<String, dynamic> toMap() {
@@ -47,6 +55,7 @@ class ChildModel {
       'totalXp': totalXp,
       'level': level,
       'pinCode': pinCode,
+      'unlockedAvatars': unlockedAvatars, // Salva no Firebase
     };
   }
 
@@ -68,6 +77,11 @@ class ChildModel {
       totalXp: map['totalXp']?.toInt() ?? 0,
       level: map['level']?.toInt() ?? 1,
       pinCode: map['pinCode'],
+      // Lê do Firebase ou dá os básicos se for um perfil antigo
+      unlockedAvatars: List<String>.from(
+        map['unlockedAvatars'] ??
+            ['avatar_boy', 'avatar_girl', 'avatar_dino', 'avatar_hero'],
+      ),
     );
   }
 }

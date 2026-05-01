@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../data/services/auth_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -18,18 +18,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _checkAuth() async {
-    // Pequeno atraso para animação da logo
     await Future.delayed(const Duration(seconds: 2));
 
-    // Verificamos o estado atual da stream de autenticação
-    final user = ref.read(authStateProvider).value;
+    // Leitura síncrona e direta no Firebase (100% à prova de falhas para sessão)
+    final user = FirebaseAuth.instance.currentUser;
 
     if (mounted) {
       if (user != null) {
-        // Se estiver logado, vai para seleção de modo (ou home se já tiver modo salvo)
         context.go('/mode-selection');
       } else {
-        // Se não estiver logado, vai para a tela de login
         context.go('/login');
       }
     }
@@ -39,22 +36,22 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.primary,
-      body: Center(
+      body: const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.child_care, size: 100, color: Colors.white),
-            const SizedBox(height: 20),
+            Icon(Icons.child_care, size: 100, color: Colors.white),
+            SizedBox(height: 20),
             Text(
               'Rotina Kids+',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 32,
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 20),
-            const CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 20),
+            CircularProgressIndicator(color: Colors.white),
           ],
         ),
       ),

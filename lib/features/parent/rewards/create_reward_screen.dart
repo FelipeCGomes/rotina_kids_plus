@@ -20,6 +20,7 @@ class _CreateRewardScreenState extends ConsumerState<CreateRewardScreen> {
   late TextEditingController _xpController;
   late TextEditingController _durationController;
 
+  String? _selectedChildId;
   String _selectedType = 'Tempo livre';
   bool _isLoading = false;
   bool _requiresApproval = true;
@@ -47,10 +48,12 @@ class _CreateRewardScreenState extends ConsumerState<CreateRewardScreen> {
     );
 
     if (r != null) {
+      _selectedChildId = r.childId;
       _selectedType = r.rewardType;
       _requiresApproval = r.requiresApproval;
       _checkIfTimeBased(r.rewardType);
     } else {
+      _selectedChildId = ref.read(selectedChildProvider)?.id;
       _checkIfTimeBased(_selectedType);
     }
   }
@@ -64,47 +67,75 @@ class _CreateRewardScreenState extends ConsumerState<CreateRewardScreen> {
   Future<void> _saveReward() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final currentChild = ref.read(selectedChildProvider);
-    final childId = widget.rewardToEdit?.childId ?? currentChild?.id;
-
-    if (childId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nenhuma criança selecionada.')),
-      );
+    if (_selectedChildId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Selecione uma criança.')));
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      final reward = RewardModel(
-        id: widget.rewardToEdit?.id ?? '',
-        childId: childId,
-        title: _titleController.text.trim(),
-        description: _descController.text.trim().isEmpty
-            ? null
-            : _descController.text.trim(),
-        xpCost: int.parse(_xpController.text.trim()),
-        rewardType: _selectedType,
-        requiresApproval: _requiresApproval,
-        durationMinutes: _isTimeBased
-            ? int.tryParse(_durationController.text.trim())
-            : null,
-      );
-
       final service = ref.read(rewardServiceProvider);
-      if (widget.rewardToEdit == null) {
-        await service.addReward(reward);
-        if (mounted)
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Prêmio criado!')));
+      final children = ref.read(parentChildrenStreamProvider).value ?? [];
+
+      // --- LÓGICA DE SALVAMENTO MÚLTIPLO (TODA A FAMÍLIA) ---
+      if (_selectedChildId == 'all' && widget.rewardToEdit == null) {
+        for (var child in children) {
+          final reward = RewardModel(
+            id: '',
+            childId: child.id,
+            title: _titleController.text.trim(),
+            description: _descController.text.trim().isEmpty
+                ? null
+                : _descController.text.trim(),
+            xpCost: int.parse(_xpController.text.trim()),
+            rewardType: _selectedType,
+            requiresApproval: _requiresApproval,
+            durationMinutes: _isTimeBased
+                ? int.tryParse(_durationController.text.trim())
+                : null,
+          );
+          await service.addReward(reward);
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Prémio criado para todos os filhos!'),
+            ),
+          );
+        }
       } else {
-        await service.updateReward(reward);
-        if (mounted)
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Prêmio atualizado!')));
+        // --- LÓGICA DE SALVAMENTO ÚNICO (UMA CRIANÇA OU EDIÇÃO) ---
+        final reward = RewardModel(
+          id: widget.rewardToEdit?.id ?? '',
+          childId: _selectedChildId!,
+          title: _titleController.text.trim(),
+          description: _descController.text.trim().isEmpty
+              ? null
+              : _descController.text.trim(),
+          xpCost: int.parse(_xpController.text.trim()),
+          rewardType: _selectedType,
+          requiresApproval: _requiresApproval,
+          durationMinutes: _isTimeBased
+              ? int.tryParse(_durationController.text.trim())
+              : null,
+        );
+
+        if (widget.rewardToEdit == null) {
+          await service.addReward(reward);
+          if (mounted)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Prémio criado com sucesso!')),
+            );
+        } else {
+          await service.updateReward(reward);
+          if (mounted)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Prémio atualizado com sucesso!')),
+            );
+        }
       }
 
       if (mounted) context.pop();
@@ -130,9 +161,10 @@ class _CreateRewardScreenState extends ConsumerState<CreateRewardScreen> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.rewardToEdit != null;
+    final childrenAsync = ref.watch(parentChildrenStreamProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text(isEditing ? 'Editar Prêmio' : 'Novo Prêmio')),
+      appBar: AppBar(title: Text(isEditing ? 'Editar Prémio' : 'Novo Prémio')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Form(
@@ -140,10 +172,61 @@ class _CreateRewardScreenState extends ConsumerState<CreateRewardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // --- SELETOR DE CRIANÇA COM OPÇÃO "TODOS" ---
+              childrenAsync.when(
+                data: (children) {
+                  if (children.isEmpty) return const SizedBox.shrink();
+
+                  // Valida se o ID selecionado ainda existe
+                  if (_selectedChildId != null &&
+                      _selectedChildId != 'all' &&
+                      !children.any((c) => c.id == _selectedChildId)) {
+                    _selectedChildId = null;
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedChildId,
+                      decoration: const InputDecoration(
+                        labelText: 'Disponível para quem?',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.people_outline),
+                      ),
+                      items: [
+                        if (!isEditing) // Só permite "Toda a Família" na criação
+                          const DropdownMenuItem(
+                            value: 'all',
+                            child: Text(
+                              'Toda a Família (Todos)',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ...children.map(
+                          (c) => DropdownMenuItem(
+                            value: c.id,
+                            child: Text(c.name),
+                          ),
+                        ),
+                      ],
+                      onChanged: (val) =>
+                          setState(() => _selectedChildId = val),
+                      validator: (val) =>
+                          val == null ? 'Selecione uma opção' : null,
+                    ),
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (_, _) => const SizedBox.shrink(),
+              ),
+
               TextFormField(
                 controller: _titleController,
                 decoration: const InputDecoration(
-                  labelText: 'Nome do Prêmio (Ex: Assistir YouTube)',
+                  labelText: 'Nome do Prémio (Ex: Assistir YouTube)',
                   border: OutlineInputBorder(),
                 ),
                 validator: (value) =>
@@ -172,8 +255,10 @@ class _CreateRewardScreenState extends ConsumerState<CreateRewardScreen> {
                     .toList(),
                 onChanged: (val) {
                   if (val != null) {
-                    _selectedType = val;
-                    _checkIfTimeBased(val);
+                    setState(() {
+                      _selectedType = val;
+                      _checkIfTimeBased(val);
+                    });
                   }
                 },
               ),
@@ -241,7 +326,7 @@ class _CreateRewardScreenState extends ConsumerState<CreateRewardScreen> {
                         ),
                       ),
                       child: Text(
-                        isEditing ? 'Salvar Alterações' : 'Criar Prêmio',
+                        isEditing ? 'Salvar Alterações' : 'Criar Prémio',
                         style: const TextStyle(fontSize: 16),
                       ),
                     ),

@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:avataaars/avataaars.dart';
 import '../../../data/models/child_model.dart';
 import '../../../data/services/firestore_providers.dart';
 import '../../../data/services/reward_providers.dart';
 import '../../../data/services/child_action_providers.dart';
 import '../../../core/utils/tts_service.dart';
 
-// Provedor para escutar os dados atualizados da criança ativa (para o XP atualizar em tempo real)
 final liveActiveChildProvider = StreamProvider.family<ChildModel?, String>((
   ref,
   childId,
@@ -37,20 +39,53 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
-  // --- ANIMAÇÃO DE SUCESSO (MISSÕES) ---
+  // --- Função Definitiva: Lê o JSON e desenha o boneco como Imagem (SVG) ---
+  Widget _renderAvatar(String avatarData, {double size = 40}) {
+    if (avatarData.startsWith('{"')) {
+      try {
+        final avataaar = Avataaar.fromJson(avatarData);
+        return SvgPicture.string(
+          avataaar.toSvg(),
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+        );
+      } catch (_) {
+        return Icon(Icons.face, size: size * 0.6, color: Colors.blueAccent);
+      }
+    }
+    return Icon(
+      _getFallbackIcon(avatarData),
+      size: size * 0.6,
+      color: Colors.blueAccent,
+    );
+  }
+
+  IconData _getFallbackIcon(String id) {
+    switch (id) {
+      case 'avatar_dino':
+        return Icons.pets;
+      case 'avatar_girl':
+        return Icons.face_3;
+      case 'avatar_hero':
+        return Icons.flash_on;
+      default:
+        return Icons.face;
+    }
+  }
+
   void _showSuccessAnimation(BuildContext context, int xp) {
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
-      barrierColor: Colors.black87, // Fundo escurecido
+      barrierColor: Colors.black87,
       transitionDuration: const Duration(milliseconds: 600),
       pageBuilder: (context, animation, secondaryAnimation) =>
           const SizedBox.shrink(),
       transitionBuilder: (context, a1, a2, child) {
-        // Cria um efeito de "mola" (bounce) ao aparecer
         final curvedValue = Curves.elasticOut.transform(a1.value);
         return Transform.scale(
           scale: curvedValue,
@@ -86,16 +121,12 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
         );
       },
     );
-
-    // Fecha a animação automaticamente após 2.5 segundos
     Future.delayed(const Duration(milliseconds: 2500), () {
-      if (mounted && Navigator.of(context).canPop()) {
+      if (mounted && Navigator.of(context).canPop())
         Navigator.of(context).pop();
-      }
     });
   }
 
-  // --- ANIMAÇÃO DE COMPRA (LOJA) ---
   void _showPurchaseAnimation(BuildContext context) {
     showGeneralDialog(
       context: context,
@@ -111,16 +142,16 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
           child: AlertDialog(
             backgroundColor: Colors.transparent,
             elevation: 0,
-            content: Column(
+            content: const Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
+                Icon(
                   Icons.card_giftcard_rounded,
                   color: Colors.purpleAccent,
                   size: 120,
                 ),
-                const SizedBox(height: 20),
-                const Text(
+                SizedBox(height: 20),
+                Text(
                   'PEDIDO ENVIADO!',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -129,9 +160,9 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 10),
-                const Text(
-                  'A aguardar aprovação dos pais.',
+                SizedBox(height: 10),
+                Text(
+                  'Aguardando aprovação.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 18, color: Colors.white70),
                 ),
@@ -141,11 +172,9 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
         );
       },
     );
-
     Future.delayed(const Duration(milliseconds: 2500), () {
-      if (mounted && Navigator.of(context).canPop()) {
+      if (mounted && Navigator.of(context).canPop())
         Navigator.of(context).pop();
-      }
     });
   }
 
@@ -160,7 +189,6 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
       );
     }
 
-    // Escuta o perfil ao vivo para atualizar a moeda
     final liveChildAsync = ref.watch(liveActiveChildProvider(activeSession.id));
 
     return Scaffold(
@@ -169,7 +197,19 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
         backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
         title: liveChildAsync.when(
-          data: (child) => Text('Olá, ${child?.name ?? ''}!'),
+          data: (child) => Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: Colors.white,
+                radius: 16,
+                child: ClipOval(
+                  child: _renderAvatar(child?.avatarId ?? '', size: 32),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text('Olá, ${child?.name ?? ''}!'),
+            ],
+          ),
           loading: () => const Text('A carregar...'),
           error: (_, _) => const Text('Erro'),
         ),
@@ -216,7 +256,11 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
           indicatorWeight: 4,
           tabs: const [
             Tab(icon: Icon(Icons.star, size: 30), text: 'Missões'),
-            Tab(icon: Icon(Icons.storefront, size: 30), text: 'Prémios'),
+            Tab(icon: Icon(Icons.storefront, size: 30), text: 'Prêmios'),
+            Tab(
+              icon: Icon(Icons.face_retouching_natural, size: 30),
+              text: 'Meu Avatar',
+            ),
           ],
         ),
       ),
@@ -226,6 +270,11 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
           _buildMissionsTab(activeSession.id, ttsService),
           liveChildAsync.when(
             data: (child) => _buildStoreTab(child!),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, _) => const SizedBox.shrink(),
+          ),
+          liveChildAsync.when(
+            data: (child) => _buildAvatarTab(child!),
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (_, _) => const SizedBox.shrink(),
           ),
@@ -265,7 +314,6 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
             ),
           );
         }
-
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: tasks.length,
@@ -286,7 +334,7 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
                     size: 36,
                   ),
                   onPressed: () => ttsService.speak(
-                    'A tua missão é: ${task.title}. Vale ${task.xpReward} moedas.',
+                    'Sua missão é: ${task.title}. Vale ${task.xpReward} moedas.',
                   ),
                 ),
                 title: Text(
@@ -313,19 +361,12 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
                     ),
                   ),
                   onPressed: () async {
-                    // 1. Aciona a voz de parabéns
                     ttsService.speak(
-                      'Muito bem! Ganhaste ${task.xpReward} moedas.',
+                      'Muito bem! Ganhou ${task.xpReward} moedas.',
                     );
-
-                    // 2. Mostra a animação da estrela gigante
                     _showSuccessAnimation(context, task.xpReward);
-
-                    // 3. Aguarda um pequeno momento para a animação começar antes de remover do ecrã
                     await Future.delayed(const Duration(milliseconds: 500));
-
-                    // 4. Conclui a tarefa na base de dados
-                    if (mounted) {
+                    if (mounted)
                       ref
                           .read(childActionServiceProvider)
                           .completeTask(
@@ -334,7 +375,6 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
                             task.title,
                             task.xpReward,
                           );
-                    }
                   },
                   child: Text(
                     'FEITO!\n+${task.xpReward}',
@@ -357,15 +397,13 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Erro: $e')),
       data: (rewards) {
-        if (rewards.isEmpty) {
+        if (rewards.isEmpty)
           return const Center(
             child: Text(
               'A lojinha está vazia.',
               style: TextStyle(fontSize: 18),
             ),
           );
-        }
-
         return GridView.builder(
           padding: const EdgeInsets.all(16),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -439,10 +477,8 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
                       ),
                       onPressed: canAfford
                           ? () async {
-                              // Mostra a animação visual do pedido
                               _showPurchaseAnimation(context);
-
-                              final success = await ref
+                              await ref
                                   .read(childActionServiceProvider)
                                   .buyReward(child, reward);
                             }
@@ -462,6 +498,61 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
           },
         );
       },
+    );
+  }
+
+  Widget _buildAvatarTab(ChildModel child) {
+    final hasCustomAvatar = child.avatarId.startsWith('{"');
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          height: 300,
+          width: 300,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(color: Colors.black12, blurRadius: 15, spreadRadius: 5),
+            ],
+          ),
+          child: ClipOval(
+            child: hasCustomAvatar
+                ? _renderAvatar(child.avatarId, size: 300)
+                : Icon(
+                    _getFallbackIcon(child.avatarId),
+                    size: 150,
+                    color: Colors.blueAccent,
+                  ),
+          ),
+        ),
+        const SizedBox(height: 40),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.face_retouching_natural, size: 28),
+            label: Text(
+              hasCustomAvatar
+                  ? 'MUDAR ROUPAS E ACESSÓRIOS'
+                  : 'CRIAR O MEU AVATAR',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purpleAccent,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 65),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+            ),
+            onPressed: () {
+              context.push('/avatar-creator', extra: child);
+            },
+          ),
+        ),
+      ],
     );
   }
 }

@@ -22,6 +22,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   late TextEditingController _intervalController;
   late TextEditingController _durationDaysController;
 
+  String? _selectedChildId;
   String _selectedCategory = 'Casa';
   String _selectedPeriod = 'Manhã';
   DateTime _selectedDate = DateTime.now();
@@ -75,6 +76,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     );
 
     if (t != null) {
+      _selectedChildId = t.childId;
       _selectedCategory = t.category;
       _selectedPeriod = t.period;
       _selectedDate = t.startDate;
@@ -99,6 +101,8 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
       if (_isRecurring) _selectedDays = List.from(t.daysOfWeek);
       if (t.intervalHours != null) _hasInterval = true;
       if (t.durationInDays != null) _hasDurationLimit = true;
+    } else {
+      _selectedChildId = ref.read(selectedChildProvider)?.id;
     }
   }
 
@@ -110,7 +114,6 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
           (category == 'Consulta' ||
           category == 'Terapia' ||
           category == 'Escola');
-
       if (category == 'Medicamento') {
         _hasInterval = true;
         _isRecurring = true;
@@ -162,13 +165,10 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
       return;
     }
 
-    final currentChild = ref.read(selectedChildProvider);
-    final childId = widget.taskToEdit?.childId ?? currentChild?.id;
-
-    if (childId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nenhuma criança selecionada.')),
-      );
+    if (_selectedChildId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Selecione uma criança!')));
       return;
     }
 
@@ -176,52 +176,89 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
 
     try {
       final taskService = ref.read(taskServiceProvider);
+      final children = ref.read(parentChildrenStreamProvider).value ?? [];
 
       final formattedTime =
           '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
       String? formattedEndTime;
-
       if (_hasEndTime && _selectedEndTime != null) {
         formattedEndTime =
             '${_selectedEndTime!.hour.toString().padLeft(2, '0')}:${_selectedEndTime!.minute.toString().padLeft(2, '0')}';
       }
 
-      final task = TaskModel(
-        id: widget.taskToEdit?.id ?? '',
-        childId: childId,
-        title: _titleController.text.trim(),
-        description: _descController.text.trim().isEmpty
-            ? null
-            : _descController.text.trim(),
-        category: _selectedCategory,
-        period: _selectedPeriod,
-        startDate: _selectedDate,
-        time: formattedTime,
-        xpReward: int.parse(_xpController.text.trim()),
-        requiresApproval: _requiresApproval,
-        endTime: formattedEndTime,
-        isRecurring: _isRecurring,
-        daysOfWeek: _isRecurring ? _selectedDays : [],
-        intervalHours: _hasInterval
-            ? int.tryParse(_intervalController.text.trim())
-            : null,
-        durationInDays: _hasDurationLimit
-            ? int.tryParse(_durationDaysController.text.trim())
-            : null,
-      );
-
-      if (widget.taskToEdit == null) {
-        await taskService.addTask(task);
+      // --- LÓGICA DE SALVAMENTO MÚLTIPLO (TODA A FAMÍLIA) ---
+      if (_selectedChildId == 'all' && widget.taskToEdit == null) {
+        for (var child in children) {
+          final task = TaskModel(
+            id: '',
+            childId: child.id,
+            title: _titleController.text.trim(),
+            description: _descController.text.trim().isEmpty
+                ? null
+                : _descController.text.trim(),
+            category: _selectedCategory,
+            period: _selectedPeriod,
+            startDate: _selectedDate,
+            time: formattedTime,
+            xpReward: int.parse(_xpController.text.trim()),
+            requiresApproval: _requiresApproval,
+            endTime: formattedEndTime,
+            isRecurring: _isRecurring,
+            daysOfWeek: _isRecurring ? _selectedDays : [],
+            intervalHours: _hasInterval
+                ? int.tryParse(_intervalController.text.trim())
+                : null,
+            durationInDays: _hasDurationLimit
+                ? int.tryParse(_durationDaysController.text.trim())
+                : null,
+          );
+          await taskService.addTask(task);
+        }
         if (mounted)
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Tarefa criada com sucesso!')),
+            const SnackBar(
+              content: Text('Tarefas criadas para todos os filhos!'),
+            ),
           );
       } else {
-        await taskService.updateTask(task);
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Tarefa atualizada com sucesso!')),
-          );
+        // --- SALVAMENTO ÚNICO (UMA CRIANÇA OU EDIÇÃO) ---
+        final task = TaskModel(
+          id: widget.taskToEdit?.id ?? '',
+          childId: _selectedChildId!,
+          title: _titleController.text.trim(),
+          description: _descController.text.trim().isEmpty
+              ? null
+              : _descController.text.trim(),
+          category: _selectedCategory,
+          period: _selectedPeriod,
+          startDate: _selectedDate,
+          time: formattedTime,
+          xpReward: int.parse(_xpController.text.trim()),
+          requiresApproval: _requiresApproval,
+          endTime: formattedEndTime,
+          isRecurring: _isRecurring,
+          daysOfWeek: _isRecurring ? _selectedDays : [],
+          intervalHours: _hasInterval
+              ? int.tryParse(_intervalController.text.trim())
+              : null,
+          durationInDays: _hasDurationLimit
+              ? int.tryParse(_durationDaysController.text.trim())
+              : null,
+        );
+
+        if (widget.taskToEdit == null) {
+          await taskService.addTask(task);
+          if (mounted)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Tarefa criada com sucesso!')),
+            );
+        } else {
+          await taskService.updateTask(task);
+          if (mounted)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Tarefa atualizada com sucesso!')),
+            );
+        }
       }
 
       if (mounted) context.pop();
@@ -248,6 +285,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.taskToEdit != null;
+    final childrenAsync = ref.watch(parentChildrenStreamProvider);
 
     return Scaffold(
       appBar: AppBar(title: Text(isEditing ? 'Editar Tarefa' : 'Nova Tarefa')),
@@ -258,6 +296,57 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // --- SELETOR DE CRIANÇA COM OPÇÃO "TODOS" ---
+              childrenAsync.when(
+                data: (children) {
+                  if (children.isEmpty) return const SizedBox.shrink();
+
+                  // Se for edição ou o ID não for válido, ajusta
+                  if (_selectedChildId != null &&
+                      _selectedChildId != 'all' &&
+                      !children.any((c) => c.id == _selectedChildId)) {
+                    _selectedChildId = null;
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedChildId,
+                      decoration: const InputDecoration(
+                        labelText: 'Para quem é esta tarefa?',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.people_outline),
+                      ),
+                      items: [
+                        if (!isEditing) // Só permite "Toda a Família" na criação, por segurança
+                          const DropdownMenuItem(
+                            value: 'all',
+                            child: Text(
+                              'Toda a Família (Todos)',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ...children.map(
+                          (c) => DropdownMenuItem(
+                            value: c.id,
+                            child: Text(c.name),
+                          ),
+                        ),
+                      ],
+                      onChanged: (val) =>
+                          setState(() => _selectedChildId = val),
+                      validator: (val) =>
+                          val == null ? 'Selecione uma criança' : null,
+                    ),
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (_, _) => const SizedBox.shrink(),
+              ),
+
               TextFormField(
                 controller: _titleController,
                 decoration: const InputDecoration(
@@ -371,6 +460,8 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.star, color: Colors.amber),
                       ),
+                      validator: (value) =>
+                          value == null || value.isEmpty ? 'Obrigatório' : null,
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -388,22 +479,19 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
               const Divider(),
 
               // --- CONFIGURAÇÕES AVANÇADAS ---
               SwitchListTile(
                 title: const Text('Definir horário de término'),
-                subtitle: const Text('Ideal para aulas e consultas'),
                 value: _hasEndTime,
                 onChanged: (val) => setState(() => _hasEndTime = val),
               ),
               if (_hasEndTime)
                 Padding(
-                  padding: const EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    bottom: 16,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
                   ),
                   child: InkWell(
                     onTap: () => _pickTime(isEndTime: true),
@@ -412,20 +500,13 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                         labelText: 'Término previsto',
                         border: OutlineInputBorder(),
                       ),
-                      child: Text(
-                        _selectedEndTime?.format(context) ?? '--:--',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.blue,
-                        ),
-                      ),
+                      child: Text(_selectedEndTime?.format(context) ?? '--:--'),
                     ),
                   ),
                 ),
 
               SwitchListTile(
                 title: const Text('Repetir em dias específicos'),
-                subtitle: const Text('Cria uma rotina contínua'),
                 value: _isRecurring,
                 onChanged: (val) => setState(() => _isRecurring = val),
               ),
@@ -442,16 +523,12 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                       return FilterChip(
                         label: Text(day),
                         selected: isSelected,
-                        selectedColor: Theme.of(
-                          context,
-                        ).colorScheme.primaryContainer,
                         onSelected: (selected) {
                           setState(() {
-                            if (selected) {
+                            if (selected)
                               _selectedDays.add(day);
-                            } else {
+                            else
                               _selectedDays.remove(day);
-                            }
                           });
                         },
                       );
@@ -461,23 +538,20 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
 
               SwitchListTile(
                 title: const Text('Repetir no mesmo dia'),
-                subtitle: const Text('Ex: Tomar remédio a cada 8 horas'),
                 value: _hasInterval,
                 onChanged: (val) => setState(() => _hasInterval = val),
               ),
               if (_hasInterval)
                 Padding(
-                  padding: const EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    bottom: 16,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
                   ),
                   child: TextFormField(
                     controller: _intervalController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
                       labelText: 'Intervalo em horas',
-                      hintText: 'Ex: 8',
                       border: OutlineInputBorder(),
                       suffixText: 'horas',
                     ),
@@ -486,29 +560,26 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
 
               SwitchListTile(
                 title: const Text('Limitar período em dias'),
-                subtitle: const Text('Ex: Tratamento por 15 dias'),
                 value: _hasDurationLimit,
                 onChanged: (val) => setState(() => _hasDurationLimit = val),
               ),
               if (_hasDurationLimit)
                 Padding(
-                  padding: const EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    bottom: 16,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
                   ),
                   child: TextFormField(
                     controller: _durationDaysController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
                       labelText: 'Duração (em dias)',
-                      hintText: 'Ex: 15',
                       border: OutlineInputBorder(),
                       suffixText: 'dias',
                     ),
                     validator: (value) =>
                         _hasDurationLimit && (value == null || value.isEmpty)
-                        ? 'Informe a quantidade de dias'
+                        ? 'Informe os dias'
                         : null,
                   ),
                 ),

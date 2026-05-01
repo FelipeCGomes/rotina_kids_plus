@@ -119,9 +119,18 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
           ),
           TextButton(
             onPressed: () async {
-              await ref
-                  .read(childServiceProvider)
-                  .deleteChild(widget.childToEdit!.id);
+              final childIdToDelete = widget.childToEdit!.id; //
+
+              // 1. Deleta do Firestore
+              await ref.read(childServiceProvider).deleteChild(childIdToDelete);
+
+              // 2. CORREÇÃO: Verifica se a criança excluída é a que está selecionada no Dashboard
+              final selectedChild = ref.read(selectedChildProvider);
+              if (selectedChild?.id == childIdToDelete) {
+                // Limpa a seleção para forçar o Dashboard a atualizar
+                ref.read(selectedChildProvider.notifier).state = null;
+              }
+
               if (mounted) {
                 Navigator.pop(ctx); // Fecha o alerta
                 context.pop(); // Volta para o Dashboard

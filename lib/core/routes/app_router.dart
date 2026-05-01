@@ -4,6 +4,7 @@ import 'package:rotina_kids_plus/data/models/child_model.dart';
 import 'package:rotina_kids_plus/data/models/community_models.dart';
 import 'package:rotina_kids_plus/data/models/reward_model.dart';
 import 'package:rotina_kids_plus/data/models/task_model.dart';
+import 'package:rotina_kids_plus/features/child/avatar/avatar_creator_screen.dart';
 import 'package:rotina_kids_plus/features/child/child_selection_screen.dart';
 import 'package:rotina_kids_plus/features/parent/calendar/calendar_screen.dart';
 import 'package:rotina_kids_plus/features/parent/calendar/create_event_screen.dart';
@@ -40,12 +41,7 @@ final appRouter = GoRouter(
       path: '/child-home',
       builder: (context, state) => const ChildDashboardScreen(),
     ),
-
-    GoRoute(
-      path: '/add-child',
-      builder: (context, state) => const AddChildScreen(),
-    ),
-
+    // Rota ÚNICA e correta para Adicionar/Editar Criança
     GoRoute(
       path: '/add-child',
       builder: (context, state) {
@@ -55,16 +51,13 @@ final appRouter = GoRouter(
         return AddChildScreen(childToEdit: child);
       },
     ),
-
     GoRoute(
       path: '/create-task',
       builder: (context, state) {
-        final task =
-            state.extra as TaskModel?; // Captura a tarefa enviada para edição
+        final task = state.extra as TaskModel?;
         return CreateTaskScreen(taskToEdit: task);
       },
     ),
-
     GoRoute(
       path: '/routine-list',
       builder: (context, state) => const RoutineListScreen(),
@@ -88,7 +81,6 @@ final appRouter = GoRouter(
       path: '/screen-time',
       builder: (context, state) => const ScreenTimeDashboardScreen(),
     ),
-
     GoRoute(
       path: '/calendar',
       builder: (context, state) => const CalendarScreen(),
@@ -96,7 +88,6 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/create-event',
       builder: (context, state) {
-        // Essa lógica lida com a passagem do dia selecionado OU do evento a ser editado
         if (state.extra is DateTime) {
           return CreateEventScreen(initialDate: state.extra as DateTime);
         } else if (state.extra is Map) {
@@ -120,10 +111,16 @@ final appRouter = GoRouter(
         return PostDetailScreen(post: post);
       },
     ),
-
     GoRoute(
       path: '/child-selection',
       builder: (context, state) => const ChildSelectionScreen(),
+    ),
+    GoRoute(
+      path: '/avatar-creator',
+      builder: (context, state) {
+        final child = state.extra as ChildModel;
+        return AvatarCreatorScreen(child: child);
+      },
     ),
   ],
 );
