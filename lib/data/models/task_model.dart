@@ -2,18 +2,17 @@ class TaskModel {
   final String id;
   final String childId;
   final String title;
-  final String? description; // Novo campo
+  final String? description;
   final String category;
   final String period;
-  final DateTime startDate; // Novo campo
+  final DateTime startDate;
   final String time;
   final int xpReward;
   final String status;
-  final bool requiresApproval; // Novo campo
-
+  final bool requiresApproval;
   final String? endTime;
   final bool isRecurring;
-  final List<String> daysOfWeek;
+  final List<dynamic> daysOfWeek;
   final int? intervalHours;
   final int? durationInDays;
 
@@ -27,7 +26,8 @@ class TaskModel {
     required this.startDate,
     required this.time,
     required this.xpReward,
-    this.status = 'pending',
+    this.status =
+        'pending', // Este status vai ser ignorado pelo dashboard da criança
     this.requiresApproval = true,
     this.endTime,
     this.isRecurring = false,
@@ -44,8 +44,7 @@ class TaskModel {
       'description': description,
       'category': category,
       'period': period,
-      'startDate': startDate
-          .toIso8601String(), // Salva a data em formato padronizado
+      'startDate': startDate.toIso8601String(),
       'time': time,
       'xpReward': xpReward,
       'status': status,
@@ -76,7 +75,9 @@ class TaskModel {
       requiresApproval: map['requiresApproval'] ?? true,
       endTime: map['endTime'],
       isRecurring: map['isRecurring'] ?? false,
-      daysOfWeek: List<String>.from(map['daysOfWeek'] ?? []),
+      daysOfWeek: map['daysOfWeek'] != null
+          ? List<String>.from(map['daysOfWeek'])
+          : const [],
       intervalHours: map['intervalHours']?.toInt(),
       durationInDays: map['durationInDays']?.toInt(),
     );

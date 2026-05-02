@@ -7,7 +7,7 @@ import 'package:avatar_maker/avatar_maker.dart';
 import '../../../data/models/child_model.dart';
 import '../../../data/services/firestore_providers.dart';
 import '../../../data/services/reward_providers.dart';
-import '../../../data/services/child_action_providers.dart';
+import '../../../data/services/child_action_providers.dart' hide todayTasksStreamProvider;
 import '../../../data/services/child_providers.dart'; // IMPORTANTE: Gaveta correta
 import '../../../core/utils/tts_service.dart';
 

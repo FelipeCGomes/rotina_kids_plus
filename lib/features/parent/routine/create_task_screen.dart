@@ -32,7 +32,11 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   bool _isLoading = false;
   bool _requiresApproval = true;
   bool _hasEndTime = false;
+
+  // === NOVAS VARIÁVEIS DE REPETIÇÃO ===
   bool _isRecurring = false;
+  bool _repeatEveryDay = true;
+
   bool _hasInterval = false;
   bool _hasDurationLimit = false;
 
@@ -97,12 +101,21 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
         );
       }
 
+      // Preenche a tela de edição corretamente
       _isRecurring = t.isRecurring;
-      if (_isRecurring) _selectedDays = List.from(t.daysOfWeek);
+      if (_isRecurring) {
+        _selectedDays = List.from(t.daysOfWeek);
+        _repeatEveryDay =
+            _selectedDays.length == 7; // Se tem 7 dias, é "Todos os dias"
+      }
+
       if (t.intervalHours != null) _hasInterval = true;
       if (t.durationInDays != null) _hasDurationLimit = true;
     } else {
       _selectedChildId = ref.read(selectedChildProvider)?.id;
+      _selectedDays = List.from(
+        _weekDays,
+      ); // Começa com todos os dias selecionados por padrão
     }
   }
 
@@ -117,9 +130,9 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
       if (category == 'Medicamento') {
         _hasInterval = true;
         _isRecurring = true;
+        _repeatEveryDay = true;
         _hasDurationLimit = true;
-        _selectedDays.clear();
-        _selectedDays.addAll(_weekDays);
+        _selectedDays = List.from(_weekDays);
       } else {
         _hasInterval = false;
         _hasDurationLimit = false;
@@ -156,19 +169,27 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
 
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_isRecurring && _selectedDays.isEmpty) {
+
+    // Validação de segurança
+    if (_isRecurring && !_repeatEveryDay && _selectedDays.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Selecione pelo menos um dia para repetir.'),
+          content: Text(
+            'Selecione pelo menos um dia para a tarefa se repetir.',
+          ),
+          backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
     if (_selectedChildId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Selecione uma criança!')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecione uma criança!'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
@@ -185,6 +206,11 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
         formattedEndTime =
             '${_selectedEndTime!.hour.toString().padLeft(2, '0')}:${_selectedEndTime!.minute.toString().padLeft(2, '0')}';
       }
+
+      // Garante que se for "Todos os dias", a lista vai completa pro banco
+      final daysToSave = _isRecurring
+          ? (_repeatEveryDay ? _weekDays : _selectedDays)
+          : [];
 
       // --- LÓGICA DE SALVAMENTO MÚLTIPLO (TODA A FAMÍLIA) ---
       if (_selectedChildId == 'all' && widget.taskToEdit == null) {
@@ -204,7 +230,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
             requiresApproval: _requiresApproval,
             endTime: formattedEndTime,
             isRecurring: _isRecurring,
-            daysOfWeek: _isRecurring ? _selectedDays : [],
+            daysOfWeek: daysToSave,
             intervalHours: _hasInterval
                 ? int.tryParse(_intervalController.text.trim())
                 : null,
@@ -214,12 +240,14 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
           );
           await taskService.addTask(task);
         }
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Tarefas criadas para todos os filhos!'),
+              backgroundColor: Colors.green,
             ),
           );
+        }
       } else {
         // --- SALVAMENTO ÚNICO (UMA CRIANÇA OU EDIÇÃO) ---
         final task = TaskModel(
@@ -237,7 +265,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
           requiresApproval: _requiresApproval,
           endTime: formattedEndTime,
           isRecurring: _isRecurring,
-          daysOfWeek: _isRecurring ? _selectedDays : [],
+          daysOfWeek: daysToSave,
           intervalHours: _hasInterval
               ? int.tryParse(_intervalController.text.trim())
               : null,
@@ -248,25 +276,34 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
 
         if (widget.taskToEdit == null) {
           await taskService.addTask(task);
-          if (mounted)
+          if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Tarefa criada com sucesso!')),
+              const SnackBar(
+                content: Text('Tarefa criada com sucesso!'),
+                backgroundColor: Colors.green,
+              ),
             );
+          }
         } else {
           await taskService.updateTask(task);
-          if (mounted)
+          if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Tarefa atualizada com sucesso!')),
+              const SnackBar(
+                content: Text('Tarefa atualizada com sucesso!'),
+                backgroundColor: Colors.green,
+              ),
             );
+          }
         }
       }
 
       if (mounted) context.pop();
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Erro: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -296,12 +333,11 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // --- SELETOR DE CRIANÇA COM OPÇÃO "TODOS" ---
+              // --- SELETOR DE CRIANÇA ---
               childrenAsync.when(
                 data: (children) {
                   if (children.isEmpty) return const SizedBox.shrink();
 
-                  // Se for edição ou o ID não for válido, ajusta
                   if (_selectedChildId != null &&
                       _selectedChildId != 'all' &&
                       !children.any((c) => c.id == _selectedChildId)) {
@@ -318,7 +354,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                         prefixIcon: Icon(Icons.people_outline),
                       ),
                       items: [
-                        if (!isEditing) // Só permite "Toda a Família" na criação, por segurança
+                        if (!isEditing)
                           const DropdownMenuItem(
                             value: 'all',
                             child: Text(
@@ -481,7 +517,91 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
               ),
               const Divider(),
 
-              // --- CONFIGURAÇÕES AVANÇADAS ---
+              // ==========================================
+              // NOVA CONFIGURAÇÃO DE REPETIÇÃO
+              // ==========================================
+              Card(
+                elevation: 0,
+                color: Colors.grey[100],
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey[300]!),
+                ),
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      title: const Text(
+                        'Repetir Tarefa',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      value: _isRecurring,
+                      activeThumbColor: Theme.of(context).colorScheme.primary,
+                      onChanged: (val) => setState(() => _isRecurring = val),
+                    ),
+
+                    if (_isRecurring) ...[
+                      const Divider(height: 1),
+                      SwitchListTile(
+                        title: const Text('Todos os dias'),
+                        value: _repeatEveryDay,
+                        onChanged: (val) {
+                          setState(() {
+                            _repeatEveryDay = val;
+                            if (val) {
+                              _selectedDays = List.from(
+                                _weekDays,
+                              ); // Marca todos
+                            } else {
+                              _selectedDays
+                                  .clear(); // Desmarca para a pessoa escolher
+                            }
+                          });
+                        },
+                      ),
+
+                      if (!_repeatEveryDay)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _weekDays.map((day) {
+                              final isSelected = _selectedDays.contains(day);
+                              return FilterChip(
+                                label: Text(day),
+                                selected: isSelected,
+                                selectedColor: Theme.of(
+                                  context,
+                                ).colorScheme.primaryContainer,
+                                checkmarkColor: Theme.of(
+                                  context,
+                                ).colorScheme.primary,
+                                onSelected: (selected) {
+                                  setState(() {
+                                    if (selected) {
+                                      _selectedDays.add(day);
+                                      // Se a pessoa marcou todos manualmente, liga o "Todos os dias"
+                                      if (_selectedDays.length == 7)
+                                        _repeatEveryDay = true;
+                                    } else {
+                                      _selectedDays.remove(day);
+                                    }
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // ==========================================
               SwitchListTile(
                 title: const Text('Definir horário de término'),
                 value: _hasEndTime,
@@ -502,37 +622,6 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                       ),
                       child: Text(_selectedEndTime?.format(context) ?? '--:--'),
                     ),
-                  ),
-                ),
-
-              SwitchListTile(
-                title: const Text('Repetir em dias específicos'),
-                value: _isRecurring,
-                onChanged: (val) => setState(() => _isRecurring = val),
-              ),
-              if (_isRecurring)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: Wrap(
-                    spacing: 8,
-                    children: _weekDays.map((day) {
-                      final isSelected = _selectedDays.contains(day);
-                      return FilterChip(
-                        label: Text(day),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected)
-                              _selectedDays.add(day);
-                            else
-                              _selectedDays.remove(day);
-                          });
-                        },
-                      );
-                    }).toList(),
                   ),
                 ),
 

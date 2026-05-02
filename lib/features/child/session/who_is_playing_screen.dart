@@ -56,10 +56,10 @@ class _WhoIsPlayingScreenState extends ConsumerState<WhoIsPlayingScreen> {
     ref.read(selectedChildProvider.notifier).state = child;
 
     await _monitoringService.syncRulesToEngine(
-      deviceMode: 'shared', 
+      deviceMode: 'shared',
       timeBalance: child.timeBalance,
       blockedApps: child.blockedApps,
-      isSessionActive: true, 
+      isSessionActive: true,
     );
 
     if (mounted) {
@@ -67,7 +67,7 @@ class _WhoIsPlayingScreenState extends ConsumerState<WhoIsPlayingScreen> {
       // A LÓGICA CORRETA ESTÁ AQUI
       // =========================================================
       if (child.timeBalance > 0) {
-        // TEM SALDO? Mostra a mensagem e FECHA o Rotina Kids! O YouTube volta pra tela na hora.
+        // TEM SALDO? Mostra a mensagem e MINIMIZA o Rotina Kids! O YouTube volta pra tela na hora.
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Acesso liberado, ${child.name}! Bom jogo!'),
@@ -75,11 +75,10 @@ class _WhoIsPlayingScreenState extends ConsumerState<WhoIsPlayingScreen> {
             duration: const Duration(seconds: 2),
           ),
         );
-        
-        Future.delayed(const Duration(milliseconds: 1000), () {
-          SystemNavigator.pop();
-        });
 
+        Future.delayed(const Duration(milliseconds: 1000), () {
+          SystemNavigator.pop(); // Isso fecha o Rotina Kids e devolve a tela pro YouTube
+        });
       } else {
         // NÃO TEM SALDO? Aí sim manda pra Lan House pra ela comprar tempo.
         ScaffoldMessenger.of(context).showSnackBar(
@@ -146,10 +145,10 @@ class _WhoIsPlayingScreenState extends ConsumerState<WhoIsPlayingScreen> {
                           Container(
                             width: 100,
                             height: 100,
-                            decoration: BoxDecoration(
+                            decoration: const BoxDecoration(
                               color: Colors.white,
                               shape: BoxShape.circle,
-                              boxShadow: const [
+                              boxShadow: [
                                 BoxShadow(
                                   color: Colors.black26,
                                   blurRadius: 10,
@@ -161,7 +160,7 @@ class _WhoIsPlayingScreenState extends ConsumerState<WhoIsPlayingScreen> {
                               Icons.face,
                               size: 60,
                               color: Colors.deepPurple,
-                            ), 
+                            ),
                           ),
                           const SizedBox(height: 12),
                           Text(
@@ -186,7 +185,6 @@ class _WhoIsPlayingScreenState extends ConsumerState<WhoIsPlayingScreen> {
   }
 }
 
-// === TECLADO DA CRIANÇA ===
 class _ChildPinPad extends StatefulWidget {
   final String correctPin;
   final String childName;

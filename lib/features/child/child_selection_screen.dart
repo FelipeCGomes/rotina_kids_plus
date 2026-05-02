@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/models/child_model.dart';
-import '../../data/services/child_providers.dart';
-import '../../data/services/child_action_providers.dart';
+import '../../data/services/child_providers.dart'; // Gaveta correta (selectedChildProvider)
+import 'blocker/services/screen_monitoring_service.dart'; // Import do motor Android
 
 class ChildSelectionScreen extends ConsumerStatefulWidget {
   const ChildSelectionScreen({super.key});
@@ -14,12 +14,32 @@ class ChildSelectionScreen extends ConsumerStatefulWidget {
 }
 
 class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
+  final ScreenMonitoringService _monitoringService = ScreenMonitoringService();
+
+  // === A NOVA MÁGICA UNIFICADA ===
+  Future<void> _startSession(ChildModel child, WidgetRef ref) async {
+    // 1. Guarda a criança na "gaveta" correta que o Dashboard agora usa!
+    ref.read(selectedChildProvider.notifier).state = child;
+
+    // 2. Avisa o Android: "A criança entrou pela porta da frente. Aplique as regras!"
+    await _monitoringService.syncRulesToEngine(
+      deviceMode: 'shared',
+      timeBalance: child.timeBalance,
+      blockedApps: child.blockedApps,
+      isSessionActive: true,
+    );
+
+    if (mounted) {
+      // Usa a rota oficial que definimos no router
+      context.push('/child-dashboard');
+    }
+  }
+
   void _handleProfileTap(ChildModel child, WidgetRef ref) {
     if (child.pinCode != null && child.pinCode!.isNotEmpty) {
       _showPinDialog(child, ref);
     } else {
-      ref.read(activeChildSessionProvider.notifier).state = child;
-      context.push('/child-home');
+      _startSession(child, ref);
     }
   }
 
@@ -41,9 +61,7 @@ class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
                 Icon(
                   _getAvatarIcon(child.avatarId),
                   size: 40,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary, // Cor baseada no tema pai
+                  color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(height: 8),
                 Text('Senha do(a) ${child.name}'),
@@ -89,8 +107,8 @@ class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
                 onPressed: () {
                   if (pinController.text == child.pinCode) {
                     Navigator.pop(ctx);
-                    ref.read(activeChildSessionProvider.notifier).state = child;
-                    context.push('/child-home');
+                    // Entra usando o mesmo fluxo limpo
+                    _startSession(child, ref);
                   } else {
                     setState(() => isError = true);
                     pinController.clear();
@@ -113,7 +131,6 @@ class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
     final childrenAsync = ref.watch(parentChildrenStreamProvider);
 
     return Scaffold(
-      // Removido o backgroundColor fixo para seguir o padrão do app
       appBar: AppBar(
         elevation: 0,
         leading: IconButton(
@@ -160,7 +177,6 @@ class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
                             children: [
                               CircleAvatar(
                                 radius: 50,
-                                // Cores padronizadas com a ParentDashboardScreen
                                 backgroundColor: Theme.of(
                                   context,
                                 ).colorScheme.primaryContainer,
