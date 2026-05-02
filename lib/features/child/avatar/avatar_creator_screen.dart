@@ -19,31 +19,38 @@ class _AvatarCreatorScreenState extends State<AvatarCreatorScreen> {
   @override
   void initState() {
     super.initState();
-    // Iniciamos o controlador. Ele vai carregar automaticamente o que estiver na memória local do aparelho.
+    // O controlador carrega o último boneco salvo no aparelho automaticamente
     _controller = PersistentAvatarMakerController();
   }
 
-  Future<void> _saveAvatar() async {
+  Future<void> _handleSave() async {
+    // 1. Damos 300 milissegundos para o botão da biblioteca salvar os acessórios no celular
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    if (!mounted) return;
     setState(() => _isLoading = true);
+
     try {
-      // O SEGREDO FINAL: Usamos '.value' apenas como leitura (getter) para extrair o JSON!
-      final avatarJson = _controller.value.toJson();
-      
-      // Gravamos na nuvem (Firebase) para que o Dashboard em qualquer aparelho consiga desenhar o SVG
+      // 2. Criamos um carimbo de tempo único (ex: custom_1734567...)
+      final uniqueId = 'custom_${DateTime.now().millisecondsSinceEpoch}';
+
+      // 3. Mandamos pro Firebase. Isso vai alertar o Dashboard de que ele precisa se recarregar!
       await FirebaseFirestore.instance
           .collection('children')
           .doc(widget.child.id)
-          .update({'avatarId': avatarJson});
-      
+          .update({'avatarId': uniqueId});
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Uau! O teu visual foi guardado na nuvem!')),
+          const SnackBar(content: Text('Uau! O teu visual foi guardado!')),
         );
-        context.pop();
+        context.pop(); // Volta pro Dashboard
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erro: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -64,27 +71,27 @@ class _AvatarCreatorScreenState extends State<AvatarCreatorScreen> {
               child: CircularProgressIndicator(color: Colors.white),
             )
           else
-            IconButton(
-              icon: const Icon(Icons.check, size: 32),
-              onPressed: _saveAvatar,
-              tooltip: 'Salvar',
-            )
+            // O widget oficial da biblioteca que salva na memória
+            AvatarMakerSaveWidget(
+              controller: _controller,
+              // O nosso "espião" que detecta quando a criança levanta o dedo da tela
+              child: Listener(
+                onPointerUp: (_) => _handleSave(),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Icon(Icons.check, size: 32, color: Colors.white),
+                ),
+              ),
+            ),
         ],
       ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 20, bottom: 20),
-            child: AvatarMakerAvatar(
-              controller: _controller,
-              radius: 80,
-            ),
+            child: AvatarMakerAvatar(controller: _controller, radius: 80),
           ),
-          Expanded(
-            child: AvatarMakerCustomizer(
-              controller: _controller,
-            ),
-          ),
+          Expanded(child: AvatarMakerCustomizer(controller: _controller)),
         ],
       ),
     );

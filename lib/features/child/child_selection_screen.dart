@@ -14,12 +14,10 @@ class ChildSelectionScreen extends ConsumerStatefulWidget {
 }
 
 class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
-  // Função que mostra o cadeado caso o perfil tenha senha
   void _handleProfileTap(ChildModel child, WidgetRef ref) {
     if (child.pinCode != null && child.pinCode!.isNotEmpty) {
       _showPinDialog(child, ref);
     } else {
-      // Entra direto se não tiver senha
       ref.read(activeChildSessionProvider.notifier).state = child;
       context.push('/child-home');
     }
@@ -31,7 +29,7 @@ class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
 
     showDialog(
       context: context,
-      barrierDismissible: false, // Impede de fechar clicando fora
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) {
           return AlertDialog(
@@ -43,7 +41,9 @@ class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
                 Icon(
                   _getAvatarIcon(child.avatarId),
                   size: 40,
-                  color: Colors.blue,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary, // Cor baseada no tema pai
                 ),
                 const SizedBox(height: 8),
                 Text('Senha do(a) ${child.name}'),
@@ -83,8 +83,8 @@ class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
                 onPressed: () {
                   if (pinController.text == child.pinCode) {
@@ -113,13 +113,12 @@ class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
     final childrenAsync = ref.watch(parentChildrenStreamProvider);
 
     return Scaffold(
-      backgroundColor: Colors.blue[50],
+      // Removido o backgroundColor fixo para seguir o padrão do app
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => context.pop(),
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/mode-selection'),
         ),
       ),
       body: childrenAsync.when(
@@ -141,11 +140,7 @@ class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
               children: [
                 const Text(
                   'Quem vai jogar?',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueAccent,
-                  ),
+                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 40),
                 Wrap(
@@ -165,24 +160,28 @@ class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
                             children: [
                               CircleAvatar(
                                 radius: 50,
-                                backgroundColor: Colors.white,
+                                // Cores padronizadas com a ParentDashboardScreen
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.primaryContainer,
                                 child: Icon(
                                   _getAvatarIcon(child.avatarId),
                                   size: 60,
-                                  color: Colors.blue,
+                                  color: Theme.of(context).colorScheme.primary,
                                 ),
                               ),
-                              // Mostra um cadeado pequeno se o perfil tiver senha
                               if (hasPin)
                                 Container(
                                   padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.redAccent,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.error,
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.lock,
-                                    color: Colors.white,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onError,
                                     size: 16,
                                   ),
                                 ),

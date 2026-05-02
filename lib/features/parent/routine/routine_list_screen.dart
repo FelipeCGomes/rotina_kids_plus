@@ -165,9 +165,9 @@ class _RoutineListScreenState extends ConsumerState<RoutineListScreen> {
       ),
     );
 
-    // Formata a data para exibir se for uma tarefa de um dia só
+    // CORREÇÃO: Mostra os dias da semana na lista (ex: Seg, Qua, Sex)
     final dateString = task.isRecurring
-        ? ''
+        ? ' • ${task.daysOfWeek.join(', ')}'
         : ' • ${DateFormat('dd/MM').format(task.startDate)}';
 
     return Card(

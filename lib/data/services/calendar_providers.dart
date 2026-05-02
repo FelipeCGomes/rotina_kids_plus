@@ -1,9 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../models/calendar_event_model.dart';
 import 'firestore_providers.dart';
-import 'child_providers.dart';
 import 'auth_provider.dart';
 
 class CalendarService {

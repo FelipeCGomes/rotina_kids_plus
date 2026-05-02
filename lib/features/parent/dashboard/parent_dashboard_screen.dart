@@ -15,14 +15,26 @@ class ParentDashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Visão dos Pais'),
+        // NOVO BOTÃO: Permite ao pai devolver o app para o Modo Criança
+        title: const Text('Visão dos Pais', style: TextStyle(fontSize: 30)),
         actions: [
           IconButton(
             icon: const Icon(Icons.add_reaction_outlined),
             tooltip: 'Adicionar Filho',
             onPressed: () => context.push('/add-child'),
           ),
-          IconButton(icon: const Icon(Icons.settings), onPressed: () {}),
+
+          IconButton(
+            icon: const Icon(Icons.smart_toy, size: 28),
+            tooltip: 'Ir para Modo Criança',
+            onPressed: () => context.go('/child-selection'),
+          ),
+
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Meu Perfil',
+            onPressed: () => context.push('/parent-profile'),
+          ),
         ],
       ),
       body: childrenAsync.when(

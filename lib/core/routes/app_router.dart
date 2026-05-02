@@ -6,12 +6,14 @@ import 'package:rotina_kids_plus/data/models/reward_model.dart';
 import 'package:rotina_kids_plus/data/models/task_model.dart';
 import 'package:rotina_kids_plus/features/child/avatar/avatar_creator_screen.dart';
 import 'package:rotina_kids_plus/features/child/child_selection_screen.dart';
+import 'package:rotina_kids_plus/features/child/session/who_is_playing_screen.dart';
 import 'package:rotina_kids_plus/features/parent/calendar/calendar_screen.dart';
 import 'package:rotina_kids_plus/features/parent/calendar/create_event_screen.dart';
 import 'package:rotina_kids_plus/features/parent/children/add_child_screen.dart';
 import 'package:rotina_kids_plus/features/parent/community/community_screen.dart';
 import 'package:rotina_kids_plus/features/parent/community/post_detail_screen.dart';
 import 'package:rotina_kids_plus/features/parent/dashboard/approval_screen.dart';
+import 'package:rotina_kids_plus/features/parent/profile/parent_profile_screen.dart';
 import 'package:rotina_kids_plus/features/parent/rewards/create_reward_screen.dart';
 import 'package:rotina_kids_plus/features/parent/rewards/reward_list_screen.dart';
 import 'package:rotina_kids_plus/features/parent/routine/create_task_screen.dart';
@@ -121,6 +123,18 @@ final appRouter = GoRouter(
         final child = state.extra as ChildModel;
         return AvatarCreatorScreen(child: child);
       },
+    ),
+    GoRoute(
+      path: '/parent-profile',
+      builder: (context, state) => const ParentProfileScreen(),
+    ),
+    GoRoute(
+      path: '/who-is-playing',
+      builder: (context, state) => const WhoIsPlayingScreen(),
+    ),
+    GoRoute(
+      path: '/child-dashboard',
+      builder: (context, state) => const ChildDashboardScreen(),
     ),
   ],
 );

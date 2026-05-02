@@ -13,7 +13,14 @@ class ChildModel {
   final int totalXp;
   final int level;
   final String? pinCode;
-  final List<String> unlockedAvatars; // <-- NOVO: Guarda os avatares comprados
+  final List<String> unlockedAvatars;
+
+  // --- NOVOS CAMPOS: ECONOMIA DE TELA (LAN HOUSE) ---
+  final int
+  timeBalance; // Saldo de tempo em minutos (a criança compra e vai gastando)
+  final int
+  xpToMinutesRate; // Taxa de Câmbio: Quantos minutos vale 1 XP (ex: 1 XP = 15 min)
+  final List<String> blockedApps;
 
   ChildModel({
     required this.id,
@@ -30,13 +37,15 @@ class ChildModel {
     this.totalXp = 0,
     this.level = 1,
     this.pinCode,
-    // Avatares básicos já vêm desbloqueados de fábrica:
     this.unlockedAvatars = const [
       'avatar_boy',
       'avatar_girl',
       'avatar_dino',
       'avatar_hero',
     ],
+    this.timeBalance = 0, // Inicia sem tempo, precisa conquistar!
+    this.xpToMinutesRate = 15, // Padrão: 1 XP = 15 minutos
+    this.blockedApps = const [],
   });
 
   Map<String, dynamic> toMap() {
@@ -55,7 +64,10 @@ class ChildModel {
       'totalXp': totalXp,
       'level': level,
       'pinCode': pinCode,
-      'unlockedAvatars': unlockedAvatars, // Salva no Firebase
+      'unlockedAvatars': unlockedAvatars,
+      'timeBalance': timeBalance,
+      'xpToMinutesRate': xpToMinutesRate,
+      'blockedApps': blockedApps,
     };
   }
 
@@ -77,11 +89,13 @@ class ChildModel {
       totalXp: map['totalXp']?.toInt() ?? 0,
       level: map['level']?.toInt() ?? 1,
       pinCode: map['pinCode'],
-      // Lê do Firebase ou dá os básicos se for um perfil antigo
       unlockedAvatars: List<String>.from(
         map['unlockedAvatars'] ??
             ['avatar_boy', 'avatar_girl', 'avatar_dino', 'avatar_hero'],
       ),
+      timeBalance: map['timeBalance']?.toInt() ?? 0,
+      xpToMinutesRate: map['xpToMinutesRate']?.toInt() ?? 15,
+      blockedApps: List<String>.from(map['blockedApps'] ?? []),
     );
   }
 }
