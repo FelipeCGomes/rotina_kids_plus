@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart'; // IMPORTANTE: Para o Flutter conhecer o "Timestamp"
+
 class TaskLogModel {
   final String id;
   final String taskId;
@@ -30,15 +32,28 @@ class TaskLogModel {
   }
 
   factory TaskLogModel.fromMap(Map<String, dynamic> map, String documentId) {
+    // =====================================================================
+    // CORREÇÃO: Tradutor Inteligente de Datas (Timestamp vs String)
+    // =====================================================================
+    DateTime parsedDate = DateTime.now();
+
+    if (map['completedAt'] != null) {
+      if (map['completedAt'] is Timestamp) {
+        // Se vier da Nuvem (Firebase)
+        parsedDate = (map['completedAt'] as Timestamp).toDate();
+      } else if (map['completedAt'] is String) {
+        // Se vier da Memória Local (Texto)
+        parsedDate = DateTime.parse(map['completedAt']);
+      }
+    }
+
     return TaskLogModel(
       id: documentId,
       taskId: map['taskId'] ?? '',
       taskTitle: map['taskTitle'] ?? '',
       xpReward: map['xpReward']?.toInt() ?? 0,
       childId: map['childId'] ?? '',
-      completedAt: map['completedAt'] != null
-          ? DateTime.parse(map['completedAt'])
-          : DateTime.now(),
+      completedAt: parsedDate,
       status: map['status'] ?? 'pending',
     );
   }

@@ -20,6 +20,9 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
   late TextEditingController _lastNameController;
   late TextEditingController _pinController;
 
+  // --- NOVO: Controlador para o E-mail da Criança ---
+  late TextEditingController _childEmailController;
+
   DateTime _selectedBirthDate = DateTime.now().subtract(
     const Duration(days: 365 * 5),
   );
@@ -49,10 +52,14 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
   void initState() {
     super.initState();
     final c = widget.childToEdit;
+
     // Inicializa os campos com os dados existentes se for edição
     _nameController = TextEditingController(text: c?.name ?? '');
     _lastNameController = TextEditingController(text: c?.lastName ?? '');
     _pinController = TextEditingController(text: c?.pinCode ?? '');
+
+    // Inicializa o E-mail
+    _childEmailController = TextEditingController(text: c?.childEmail ?? '');
 
     if (c != null) {
       _selectedBirthDate = c.birthDate;
@@ -64,6 +71,16 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    // Boa prática: limpar os controladores da memória ao fechar a tela
+    _nameController.dispose();
+    _lastNameController.dispose();
+    _pinController.dispose();
+    _childEmailController.dispose();
+    super.dispose();
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -71,9 +88,7 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
     if (user == null) return;
 
     final child = ChildModel(
-      id:
-          widget.childToEdit?.id ??
-          '', // Se tiver ID, mantém para atualizar. Se não, cria novo.
+      id: widget.childToEdit?.id ?? '',
       parentId: user.uid,
       name: _nameController.text.trim(),
       lastName: _lastNameController.text.trim(),
@@ -89,10 +104,13 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
       pinCode: _pinController.text.trim().isEmpty
           ? null
           : _pinController.text.trim(),
+      // --- NOVO: Adiciona o e-mail no momento de salvar ---
+      childEmail: _childEmailController.text.trim().isEmpty
+          ? null
+          : _childEmailController.text.trim(),
     );
 
     try {
-      // Chama o serviço que agora lida com create/update automaticamente
       await ref.read(childServiceProvider).saveChild(child);
       if (mounted) context.pop();
     } catch (e) {
@@ -119,7 +137,7 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
           ),
           TextButton(
             onPressed: () async {
-              final childIdToDelete = widget.childToEdit!.id; //
+              final childIdToDelete = widget.childToEdit!.id;
 
               // 1. Deleta do Firestore
               await ref.read(childServiceProvider).deleteChild(childIdToDelete);
@@ -185,6 +203,20 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
                 ),
                 validator: (val) =>
                     val == null || val.isEmpty ? 'Campo obrigatório' : null,
+              ),
+              const SizedBox(height: 12),
+
+              // --- NOVO: Campo de E-mail da Criança ---
+              TextFormField(
+                controller: _childEmailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'E-mail Google da Criança (Opcional)',
+                  border: OutlineInputBorder(),
+                  helperText:
+                      'Se preenchido, o login com este e-mail ativa o modo criança automaticamente.',
+                  helperMaxLines: 2,
+                ),
               ),
               const SizedBox(height: 12),
 

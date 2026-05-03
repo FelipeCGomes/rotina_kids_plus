@@ -14,13 +14,12 @@ class ChildModel {
   final int level;
   final String? pinCode;
   final List<String> unlockedAvatars;
-
-  // --- NOVOS CAMPOS: ECONOMIA DE TELA (LAN HOUSE) ---
-  final int
-  timeBalance; // Saldo de tempo em minutos (a criança compra e vai gastando)
-  final int
-  xpToMinutesRate; // Taxa de Câmbio: Quantos minutos vale 1 XP (ex: 1 XP = 15 min)
+  final int timeBalance;
+  final int xpToMinutesRate;
   final List<String> blockedApps;
+
+  // --- NOVO CAMPO: E-mail próprio da criança ---
+  final String? childEmail;
 
   ChildModel({
     required this.id,
@@ -43,9 +42,10 @@ class ChildModel {
       'avatar_dino',
       'avatar_hero',
     ],
-    this.timeBalance = 0, // Inicia sem tempo, precisa conquistar!
-    this.xpToMinutesRate = 15, // Padrão: 1 XP = 15 minutos
+    this.timeBalance = 0,
+    this.xpToMinutesRate = 15,
     this.blockedApps = const [],
+    this.childEmail, // Adicionado aqui
   });
 
   Map<String, dynamic> toMap() {
@@ -68,6 +68,7 @@ class ChildModel {
       'timeBalance': timeBalance,
       'xpToMinutesRate': xpToMinutesRate,
       'blockedApps': blockedApps,
+      'childEmail': childEmail, // Adicionado aqui
     };
   }
 
@@ -96,6 +97,7 @@ class ChildModel {
       timeBalance: map['timeBalance']?.toInt() ?? 0,
       xpToMinutesRate: map['xpToMinutesRate']?.toInt() ?? 15,
       blockedApps: List<String>.from(map['blockedApps'] ?? []),
+      childEmail: map['childEmail'], // Adicionado aqui
     );
   }
 }

@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:rotina_kids_plus/data/models/task_model.dart';
-import '../models/task_log_model.dart';
 import '../models/reward_request_model.dart';
 import '../models/child_model.dart';
 import '../models/reward_model.dart';
@@ -10,31 +9,50 @@ import '../models/reward_model.dart';
 class ChildActionService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  final Set<String> _processingTasks = {};
+
   Future<void> completeTask(
     String childId,
     String taskId,
     String taskTitle,
     int xpReward,
   ) async {
-    final batch = _db.batch();
-    final logRef = _db.collection('task_logs').doc();
+    if (_processingTasks.contains(taskId)) return;
+    _processingTasks.add(taskId);
 
-    // O Log é criado aguardando aprovação
-    final log = TaskLogModel(
-      id: logRef.id,
-      taskId: taskId,
-      taskTitle: taskTitle,
-      xpReward: xpReward,
-      childId: childId,
-      completedAt: DateTime.now(),
-      status: 'waiting_approval',
-    );
-    batch.set(logRef, log.toMap());
+    try {
+      final now = DateTime.now();
+      final todayStr =
+          "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-    // MÁGICA AQUI: Nós NÃO atualizamos mais a "task" principal.
-    // Ela continua intacta no banco de dados como um "molde" para o dia seguinte!
+      final batch = _db.batch();
+      final logRef = _db.collection('task_logs').doc();
 
-    await batch.commit();
+      // ===================================================================
+      // CORREÇÃO 1: O status agora é "pending" (Pendente de Aprovação)
+      // ===================================================================
+      batch.set(logRef, {
+        'id': logRef.id,
+        'taskId': taskId,
+        'taskTitle': taskTitle,
+        'xpReward': xpReward,
+        'childId': childId,
+        'completedAt': FieldValue.serverTimestamp(),
+        'dateString': todayStr,
+        'status': 'pending',
+      });
+
+      // ===================================================================
+      // CORREÇÃO 2: Removemos o código que dava as moedas (XP) automaticamente.
+      // Agora o XP só cai na conta quando os Pais aprovarem lá no Painel deles!
+      // ===================================================================
+
+      await batch.commit();
+    } finally {
+      Future.delayed(const Duration(seconds: 3), () {
+        _processingTasks.remove(taskId);
+      });
+    }
   }
 
   Future<bool> buyReward(ChildModel child, RewardModel reward) async {
@@ -84,62 +102,78 @@ class ChildActionService {
 final childActionServiceProvider = Provider((ref) => ChildActionService());
 final activeChildSessionProvider = StateProvider<ChildModel?>((ref) => null);
 
-// =========================================================================
-// MOTOR DE TAREFAS DIÁRIAS
-// =========================================================================
-
-final todayTasksStreamProvider = StreamProvider.family<List<TaskModel>, String>((
+// 1. Ouve todas as tarefas criadas para essa criança
+final _rawTasksProvider = StreamProvider.family<List<TaskModel>, String>((
   ref,
   childId,
-) async* {
-  final db = FirebaseFirestore.instance;
-
-  final now = DateTime.now();
-  final startOfDay = DateTime(now.year, now.month, now.day);
-  final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
-
-  // Mapeia o dia da semana atual para o mesmo formato salvo na sua tela de criação
-  const weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-  final currentDayStr = weekDays[now.weekday - 1];
-
-  // Escuta os Logs (o que já foi feito HOJE)
-  final logsStream = db
-      .collection('task_logs')
-      .where('childId', isEqualTo: childId)
-      .where('completedAt', isGreaterThanOrEqualTo: startOfDay)
-      .where('completedAt', isLessThanOrEqualTo: endOfDay)
-      .snapshots();
-
-  // Escuta TODAS as tarefas da criança
-  final tasksStream = db
+) {
+  return FirebaseFirestore.instance
       .collection('tasks')
       .where('childId', isEqualTo: childId)
-      .snapshots();
+      .snapshots()
+      .map(
+        (snap) => snap.docs
+            .map((doc) => TaskModel.fromMap(doc.data(), doc.id))
+            .toList(),
+      );
+});
 
-  await for (final tasksSnapshot in tasksStream) {
-    final logsSnapshot = await logsStream.first;
+// 2. Ouve todos os logs da criança de HOJE
+final _rawLogsProvider = StreamProvider.family<List<Map<String, dynamic>>, String>((
+  ref,
+  childId,
+) {
+  final now = DateTime.now();
+  final todayStr =
+      "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-    final completedTaskIdsToday = logsSnapshot.docs
-        .map((doc) => doc.data()['taskId'] as String)
-        .toSet();
+  return FirebaseFirestore.instance
+      .collection('task_logs')
+      .where('childId', isEqualTo: childId)
+      .where('dateString', isEqualTo: todayStr)
+      .snapshots()
+      .map((snap) => snap.docs.map((doc) => doc.data()).toList());
+});
 
-    final allTasks = tasksSnapshot.docs
-        .map((doc) => TaskModel.fromMap(doc.data(), doc.id))
-        .toList();
+// 3. O Cérebro Central: Cruza as duas listas em tempo real!
+final todayTasksStreamProvider =
+    Provider.family<AsyncValue<List<TaskModel>>, String>((ref, childId) {
+      final tasksAsync = ref.watch(_rawTasksProvider(childId));
+      final logsAsync = ref.watch(_rawLogsProvider(childId));
 
-    // Filtra as tarefas que devem aparecer hoje
-    final pendingTasksToday = allTasks.where((task) {
-      // 1. Se já fez hoje, esconde.
-      if (completedTaskIdsToday.contains(task.id)) return false;
-
-      // 2. Se é uma tarefa repetitiva, verifica se ela cai no dia de hoje
-      if (task.isRecurring && task.daysOfWeek.isNotEmpty) {
-        if (!task.daysOfWeek.contains(currentDayStr)) return false;
+      if (tasksAsync.isLoading || logsAsync.isLoading) {
+        return const AsyncValue.loading();
       }
 
-      return true;
-    }).toList();
+      if (tasksAsync.hasError) {
+        return AsyncValue.error(tasksAsync.error!, tasksAsync.stackTrace!);
+      }
 
-    yield pendingTasksToday;
-  }
-});
+      if (logsAsync.hasError) {
+        return AsyncValue.error(logsAsync.error!, logsAsync.stackTrace!);
+      }
+
+      final allTasks = tasksAsync.value ?? [];
+      final allLogs = logsAsync.value ?? [];
+
+      final now = DateTime.now();
+      const weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+      final currentDayStr = weekDays[now.weekday - 1];
+
+      // Puxa os IDs das tarefas feitas hoje (independentemente se estão pendentes ou aprovadas, elas somem da tela da criança!)
+      final completedTaskIdsToday = allLogs
+          .map((log) => log['taskId'] as String)
+          .toSet();
+
+      final pendingTasksToday = allTasks.where((task) {
+        if (completedTaskIdsToday.contains(task.id)) return false;
+
+        if (task.isRecurring && task.daysOfWeek.isNotEmpty) {
+          if (!task.daysOfWeek.contains(currentDayStr)) return false;
+        }
+
+        return true;
+      }).toList();
+
+      return AsyncValue.data(pendingTasksToday);
+    });

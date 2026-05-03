@@ -3,6 +3,15 @@ import 'package:flutter/services.dart';
 class ScreenMonitoringService {
   static const platform = MethodChannel('com.rotinakids.app/monitoring');
 
+  // === NOVA FUNÇÃO: Pega o tempo do Kotlin ===
+  Future<int> getRemainingTimeFromEngine() async {
+    try {
+      return await platform.invokeMethod('getRemainingTime');
+    } on PlatformException {
+      return -1;
+    }
+  }
+
   Future<bool> checkUsagePermission() async {
     try {
       return await platform.invokeMethod('checkUsagePermission');

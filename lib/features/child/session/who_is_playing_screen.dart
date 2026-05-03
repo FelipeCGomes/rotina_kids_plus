@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../data/models/child_model.dart';
 import '../../../data/services/child_providers.dart';
+import '../../../data/services/child_action_providers.dart';
 import '../../child/blocker/services/screen_monitoring_service.dart';
 
 class WhoIsPlayingScreen extends ConsumerStatefulWidget {
@@ -53,44 +55,91 @@ class _WhoIsPlayingScreenState extends ConsumerState<WhoIsPlayingScreen> {
   }
 
   Future<void> _startSession(ChildModel child) async {
-    ref.read(selectedChildProvider.notifier).state = child;
-
-    await _monitoringService.syncRulesToEngine(
-      deviceMode: 'shared',
-      timeBalance: child.timeBalance,
-      blockedApps: child.blockedApps,
-      isSessionActive: true,
+    // =========================================================
+    // MÁGICA 1: Mostra o pop-up "Carregando Perfil..."
+    // =========================================================
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: const Row(
+          children: [
+            CircularProgressIndicator(color: Colors.deepPurple),
+            SizedBox(width: 20),
+            Text(
+              'Carregando Perfil...',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.deepPurple,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
+
+    int timeToSync = 0;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('children')
+          .doc(child.id)
+          .get();
+      timeToSync = doc.data()?['timeBalance'] ?? 0;
+
+      final installedApps = await _monitoringService.getInstalledApps();
+      await FirebaseFirestore.instance
+          .collection('children')
+          .doc(child.id)
+          .update({'installedApps': installedApps});
+    } catch (e) {
+      timeToSync = child.timeBalance;
+      debugPrint('Erro no radar ou sincronismo: $e');
+    }
+
+    ref.read(selectedChildProvider.notifier).state = child;
+    ref.read(activeChildSessionProvider.notifier).state = child;
 
     if (mounted) {
       // =========================================================
-      // A LÓGICA CORRETA ESTÁ AQUI
+      // MÁGICA 2: Fecha o pop-up
       // =========================================================
-      if (child.timeBalance > 0) {
-        // TEM SALDO? Mostra a mensagem e MINIMIZA o Rotina Kids! O YouTube volta pra tela na hora.
+      Navigator.pop(context);
+
+      if (timeToSync > 0) {
+        await _monitoringService.syncRulesToEngine(
+          deviceMode: 'shared',
+          timeBalance: timeToSync,
+          blockedApps: child.blockedApps,
+          isSessionActive: true,
+        );
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Acesso liberado, ${child.name}! Bom jogo!'),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
           ),
         );
-
         Future.delayed(const Duration(milliseconds: 1000), () {
-          SystemNavigator.pop(); // Isso fecha o Rotina Kids e devolve a tela pro YouTube
+          SystemNavigator.pop();
         });
       } else {
-        // NÃO TEM SALDO? Aí sim manda pra Lan House pra ela comprar tempo.
+        await _monitoringService.syncRulesToEngine(
+          deviceMode: 'shared',
+          timeBalance: 0,
+          blockedApps: child.blockedApps,
+          isSessionActive: false,
+        );
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Você não tem saldo de tempo! Compre fichas.'),
             backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
           ),
         );
-        context.go('/child-dashboard');
+        context.go('/child-home');
       }
-      // =========================================================
     }
   }
 
@@ -126,12 +175,11 @@ class _WhoIsPlayingScreenState extends ConsumerState<WhoIsPlayingScreen> {
               error: (e, _) =>
                   Text('Erro: $e', style: const TextStyle(color: Colors.red)),
               data: (children) {
-                if (children.isEmpty) {
+                if (children.isEmpty)
                   return const Text(
                     'Nenhuma criança cadastrada.',
                     style: TextStyle(color: Colors.white),
                   );
-                }
                 return Wrap(
                   spacing: 24,
                   runSpacing: 24,
@@ -156,8 +204,8 @@ class _WhoIsPlayingScreenState extends ConsumerState<WhoIsPlayingScreen> {
                                 ),
                               ],
                             ),
-                            child: const Icon(
-                              Icons.face,
+                            child: Icon(
+                              _getAvatarIcon(child.avatarId),
                               size: 60,
                               color: Colors.deepPurple,
                             ),
@@ -182,6 +230,13 @@ class _WhoIsPlayingScreenState extends ConsumerState<WhoIsPlayingScreen> {
         ),
       ),
     );
+  }
+
+  IconData _getAvatarIcon(String id) {
+    if (id == 'avatar_dino') return Icons.pets;
+    if (id == 'avatar_girl') return Icons.face_3;
+    if (id == 'avatar_hero') return Icons.flash_on;
+    return Icons.face;
   }
 }
 
@@ -211,7 +266,6 @@ class _ChildPinPadState extends State<_ChildPinPad> {
         _pin += number;
         _hasError = false;
       });
-
       if (_pin.length == 4) _validatePin();
     }
   }
@@ -284,15 +338,51 @@ class _ChildPinPadState extends State<_ChildPinPad> {
             }),
           ),
           const SizedBox(height: 30),
-          Wrap(
-            spacing: 20,
-            runSpacing: 20,
-            alignment: WrapAlignment.center,
+          Column(
             children: [
-              for (var i = 1; i <= 9; i++) _buildKey(i.toString()),
-              _buildKey(''),
-              _buildKey('0'),
-              _buildKey('X', isDelete: true),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildKey('1'),
+                  const SizedBox(width: 20),
+                  _buildKey('2'),
+                  const SizedBox(width: 20),
+                  _buildKey('3'),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildKey('4'),
+                  const SizedBox(width: 20),
+                  _buildKey('5'),
+                  const SizedBox(width: 20),
+                  _buildKey('6'),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildKey('7'),
+                  const SizedBox(width: 20),
+                  _buildKey('8'),
+                  const SizedBox(width: 20),
+                  _buildKey('9'),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildKey(''), // Espaço invisível para alinhar
+                  const SizedBox(width: 20),
+                  _buildKey('0'),
+                  const SizedBox(width: 20),
+                  _buildKey('X', isDelete: true),
+                ],
+              ),
             ],
           ),
         ],

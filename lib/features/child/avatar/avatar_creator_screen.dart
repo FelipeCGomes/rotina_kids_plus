@@ -14,43 +14,67 @@ class AvatarCreatorScreen extends StatefulWidget {
 
 class _AvatarCreatorScreenState extends State<AvatarCreatorScreen> {
   bool _isLoading = false;
-  late final PersistentAvatarMakerController _controller;
+  bool _isReady = false;
+  late PersistentAvatarMakerController _controller;
 
   @override
   void initState() {
     super.initState();
-    // O controlador carrega o último boneco salvo no aparelho automaticamente
-    _controller = PersistentAvatarMakerController();
+    _prepareMaker();
+  }
+
+  Future<void> _prepareMaker() async {
+    // 1. O EXORCISMO: Limpa o cofre global do aparelho ANTES da tela abrir!
+    // Garante que o rosto do irmão não apareça aqui. Começamos do zero!
+    await PersistentAvatarMakerController.clearAvatarMaker();
+
+    if (mounted) {
+      setState(() {
+        _controller = PersistentAvatarMakerController();
+        _isReady = true;
+      });
+    }
   }
 
   Future<void> _handleSave() async {
-    // 1. Damos 300 milissegundos para o botão da biblioteca salvar os acessórios no celular
+    // O botão que envolve este clique (AvatarMakerSaveWidget) acabou de ser apertado.
+    // Damos 300ms para a biblioteca terminar de gravar o rosto novo no cofre do aparelho.
     await Future.delayed(const Duration(milliseconds: 300));
 
     if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
-      // 2. Criamos um carimbo de tempo único (ex: custom_1734567...)
-      final uniqueId = 'custom_${DateTime.now().millisecondsSinceEpoch}';
+      // 2. Agora sim! Extraímos o SVG novo e atualizado da memória local!
+      final String svgData =
+          await PersistentAvatarMakerController.getAvatarSVG();
 
-      // 3. Mandamos pro Firebase. Isso vai alertar o Dashboard de que ele precisa se recarregar!
+      // 3. Trancamos o desenho na nuvem (Firebase) para a criança correta!
       await FirebaseFirestore.instance
           .collection('children')
           .doc(widget.child.id)
-          .update({'avatarId': uniqueId});
+          .update({'avatarId': svgData});
+
+      // 4. Limpamos a memória local de novo para não deixar rastro nenhum!
+      await PersistentAvatarMakerController.clearAvatarMaker();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Uau! O teu visual foi guardado!')),
+          const SnackBar(
+            content: Text('Uau! O teu visual foi guardado!'),
+            backgroundColor: Colors.green,
+          ),
         );
         context.pop(); // Volta pro Dashboard
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Erro: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao salvar: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -65,16 +89,24 @@ class _AvatarCreatorScreenState extends State<AvatarCreatorScreen> {
         backgroundColor: Colors.purpleAccent,
         foregroundColor: Colors.white,
         actions: [
-          if (_isLoading)
+          if (_isLoading || !_isReady)
             const Padding(
               padding: EdgeInsets.all(16.0),
-              child: CircularProgressIndicator(color: Colors.white),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              ),
             )
           else
-            // O widget oficial da biblioteca que salva na memória
+            // =====================================================================
+            // DE VOLTA AO JOGO: Precisamos do SaveWidget para ele jogar o SVG atualizado na memória local!
+            // =====================================================================
             AvatarMakerSaveWidget(
               controller: _controller,
-              // O nosso "espião" que detecta quando a criança levanta o dedo da tela
               child: Listener(
                 onPointerUp: (_) => _handleSave(),
                 child: const Padding(
@@ -85,15 +117,19 @@ class _AvatarCreatorScreenState extends State<AvatarCreatorScreen> {
             ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 20, bottom: 20),
-            child: AvatarMakerAvatar(controller: _controller, radius: 80),
-          ),
-          Expanded(child: AvatarMakerCustomizer(controller: _controller)),
-        ],
-      ),
+      body: !_isReady
+          ? const Center(
+              child: CircularProgressIndicator(color: Colors.purpleAccent),
+            )
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 20, bottom: 20),
+                  child: AvatarMakerAvatar(controller: _controller, radius: 80),
+                ),
+                Expanded(child: AvatarMakerCustomizer(controller: _controller)),
+              ],
+            ),
     );
   }
 }

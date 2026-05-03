@@ -7,6 +7,8 @@ import '../../../data/models/child_model.dart';
 import '../../../data/services/child_providers.dart';
 import '../../child/blocker/services/screen_monitoring_service.dart';
 import '../../../data/services/auth_provider.dart';
+// IMPORTANTE: Importar o motor de notificações
+import '../../../core/utils/notification_service.dart';
 
 class ScreenTimeDashboardScreen extends ConsumerStatefulWidget {
   const ScreenTimeDashboardScreen({super.key});
@@ -35,23 +37,24 @@ class _ScreenTimeDashboardScreenState
   int _totalMinutes = 0;
 
   String _selectedChildId = '';
+  String _currentDeviceMode = 'shared'; // Guarda o modo atual do aparelho
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // OS OUVINTES ANTIGOS FORAM REMOVIDOS DAQUI TAMBÉM!
-
     _tabController = TabController(length: 2, vsync: this);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final selected = ref.read(selectedChildProvider);
-      if (selected != null) {
-        setState(() => _selectedChildId = selected.id);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final children = await ref.read(parentChildrenStreamProvider.future);
+      if (children.isNotEmpty) {
+        final selected = ref.read(selectedChildProvider);
+        setState(() {
+          _selectedChildId = selected?.id ?? children.first.id;
+        });
       }
+      _checkPermissionsAndLoadData(autoPrompt: true);
     });
-
-    _checkPermissionsAndLoadData(autoPrompt: true);
   }
 
   @override
@@ -65,6 +68,48 @@ class _ScreenTimeDashboardScreenState
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkPermissionsAndLoadData(autoPrompt: false);
+    }
+  }
+
+  // =====================================================================
+  // O RADAR INTELIGENTE (Prioridade Máxima para a Nuvem)
+  // =====================================================================
+  Future<void> _loadAppsIntelligently(String childId) async {
+    // 1. PRIMEIRO: Tenta sempre baixar a lista de aplicativos do Firebase!
+    // (Porque quando a criança faz login no tablet, o app envia a lista pra cá)
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('children')
+          .doc(childId)
+          .get();
+      final data = doc.data();
+
+      if (data != null && data.containsKey('installedApps')) {
+        final Map<String, dynamic> rawApps = data['installedApps'];
+        if (rawApps.isNotEmpty) {
+          setState(() {
+            _installedApps = Map.fromEntries(
+              rawApps.map((k, v) => MapEntry(k, v.toString())).entries.toList()
+                ..sort((a, b) => a.value.compareTo(b.value)),
+            );
+          });
+          return; // SUCCESSO! Sai da função aqui e não tenta ler do celular do pai.
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro ao buscar o radar de apps na nuvem: $e');
+    }
+
+    // 2. SEGUNDO (Plano B): Se a nuvem estiver vazia ou offline, só então lê local
+    try {
+      final apps = await _monitoringService.getInstalledApps();
+      setState(() {
+        _installedApps = Map.fromEntries(
+          apps.entries.toList()..sort((a, b) => a.value.compareTo(b.value)),
+        );
+      });
+    } catch (e) {
+      debugPrint('Erro ao ler apps locais: $e');
     }
   }
 
@@ -84,8 +129,9 @@ class _ScreenTimeDashboardScreenState
               .collection('users')
               .doc(authUser.uid)
               .get();
-          final String currentDeviceMode =
-              userDoc.data()?['deviceMode'] ?? 'shared';
+
+          // Salva o modo de dispositivo para o Radar Inteligente poder tomar a decisão
+          _currentDeviceMode = userDoc.data()?['deviceMode'] ?? 'shared';
 
           final children = await ref.read(parentChildrenStreamProvider.future);
           if (children.isNotEmpty) {
@@ -95,20 +141,21 @@ class _ScreenTimeDashboardScreenState
             );
 
             await _monitoringService.syncRulesToEngine(
-              deviceMode: currentDeviceMode,
+              deviceMode: _currentDeviceMode,
               timeBalance: liveChild.timeBalance,
               blockedApps: liveChild.blockedApps,
               isSessionActive: false,
             );
+
+            // Chama o Radar Inteligente!
+            await _loadAppsIntelligently(_selectedChildId);
           }
         }
       } catch (e) {
         debugPrint('Erro na sincronização: $e');
       }
 
-      final apps = await _monitoringService.getInstalledApps();
       final usage = await _monitoringService.getDailyAppUsage();
-
       usage.removeWhere((key, value) => value <= 0);
       final sortedUsage = Map.fromEntries(
         usage.entries.toList()..sort((e1, e2) => e2.value.compareTo(e1.value)),
@@ -118,15 +165,11 @@ class _ScreenTimeDashboardScreenState
       for (var min in sortedUsage.values) total += min;
 
       setState(() {
-        _installedApps = Map.fromEntries(
-          apps.entries.toList()..sort((a, b) => a.value.compareTo(b.value)),
-        );
         _appUsage = sortedUsage;
         _totalMinutes = total;
       });
     } else if (autoPrompt && !_autoPromptFired) {
       _autoPromptFired = true;
-
       if (!_hasUsagePerm) {
         await _monitoringService.requestUsagePermission();
       } else if (!_hasOverlayPerm) {
@@ -134,7 +177,9 @@ class _ScreenTimeDashboardScreenState
       }
     }
 
-    setState(() => _isLoading = false);
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 
   String _getAppName(String pkg) {
@@ -157,18 +202,8 @@ class _ScreenTimeDashboardScreenState
             .doc(child.id)
             .update(updates);
 
-        final authUser = ref.read(authStateProvider).value;
-        String mode = 'shared';
-        if (authUser != null) {
-          final doc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(authUser.uid)
-              .get();
-          mode = doc.data()?['deviceMode'] ?? 'shared';
-        }
-
         await _monitoringService.syncRulesToEngine(
-          deviceMode: mode,
+          deviceMode: _currentDeviceMode,
           timeBalance: child.timeBalance,
           blockedApps: newBlockedList ?? child.blockedApps,
           isSessionActive: false,
@@ -186,21 +221,24 @@ class _ScreenTimeDashboardScreenState
           .doc(child.id)
           .update({'timeBalance': FieldValue.increment(bonusMinutes)});
 
-      final authUser = ref.read(authStateProvider).value;
-      String mode = 'shared';
-      if (authUser != null) {
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(authUser.uid)
-            .get();
-        mode = doc.data()?['deviceMode'] ?? 'shared';
-      }
       await _monitoringService.syncRulesToEngine(
-        deviceMode: mode,
+        deviceMode: _currentDeviceMode,
         timeBalance: child.timeBalance + bonusMinutes,
         blockedApps: child.blockedApps,
         isSessionActive: false,
       );
+
+      // =================================================================
+      // DISPARO DE NOTIFICAÇÃO: Avisar a criança do presente!
+      // =================================================================
+      if (_currentDeviceMode == 'shared') {
+        NotificationService().showNotification(
+          id: DateTime.now().millisecond,
+          title: '🎁 Presente Surpresa!',
+          body:
+              'Ganhaste +$bonusMinutes minutos de ecrã dos teus pais! Aproveita!',
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -339,8 +377,13 @@ class _ScreenTimeDashboardScreenState
                           ),
                         ),
                         selected: isSelected,
-                        onSelected: (_) =>
-                            setState(() => _selectedChildId = child.id),
+                        onSelected: (selected) {
+                          if (selected) {
+                            setState(() => _selectedChildId = child.id);
+                            // === CHAMA O RADAR INTELIGENTE AO TROCAR DE PERFIL ===
+                            _loadAppsIntelligently(child.id);
+                          }
+                        },
                         selectedColor: Theme.of(
                           context,
                         ).colorScheme.primaryContainer,
@@ -374,49 +417,52 @@ class _ScreenTimeDashboardScreenState
 
   Widget _buildPermissionFallback() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.security, size: 80, color: Colors.orange),
-            const SizedBox(height: 20),
-            const Text(
-              'Ação Necessária',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              !_hasUsagePerm
-                  ? 'Precisamos de acesso aos dados de uso para monitorar o tempo.'
-                  : 'Precisamos de permissão para desenhar a tela de bloqueio sobre os jogos.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 30),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
+      // PROTEÇÃO DE ROLAGEM AQUI (caso o ecrã seja pequeno e a mensagem seja grande)
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.security, size: 80, color: Colors.orange),
+              const SizedBox(height: 20),
+              const Text(
+                'Ação Necessária',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                !_hasUsagePerm
+                    ? 'Precisamos de acesso aos dados de uso para monitorar o tempo.'
+                    : 'Precisamos de permissão para desenhar a tela de bloqueio sobre os jogos.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              const SizedBox(height: 30),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
+                  ),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Colors.white,
                 ),
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Colors.white,
+                icon: const Icon(Icons.settings),
+                label: const Text(
+                  'Resolver Agora',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                onPressed: () async {
+                  if (!_hasUsagePerm) {
+                    await _monitoringService.requestUsagePermission();
+                  } else if (!_hasOverlayPerm) {
+                    await _monitoringService.requestOverlayPermission();
+                  }
+                },
               ),
-              icon: const Icon(Icons.settings),
-              label: const Text(
-                'Resolver Agora',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              onPressed: () async {
-                if (!_hasUsagePerm) {
-                  await _monitoringService.requestUsagePermission();
-                } else if (!_hasOverlayPerm) {
-                  await _monitoringService.requestOverlayPermission();
-                }
-              },
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -4,7 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'core/theme/app_theme.dart';
 import 'core/routes/app_router.dart';
 import 'features/child/blocker/services/screen_monitoring_service.dart';
-import 'data/services/auth_provider.dart';
+import 'data/services/child_action_providers.dart';
+import 'data/services/child_providers.dart';
 
 class RotinaKidsApp extends ConsumerStatefulWidget {
   const RotinaKidsApp({super.key});
@@ -13,13 +14,10 @@ class RotinaKidsApp extends ConsumerStatefulWidget {
   ConsumerState<RotinaKidsApp> createState() => _RotinaKidsAppState();
 }
 
-// MÁGICA: Adicionamos o "WidgetsBindingObserver" para o app saber quando
-// o usuário volta da tela de configurações do Android.
 class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
     with WidgetsBindingObserver {
   final ScreenMonitoringService _monitoring = ScreenMonitoringService();
 
-  // === VARIÁVEIS DO ESCUDO DE PERMISSÃO ===
   bool _isCheckingPermissions = true;
   bool _hasAllPermissions = false;
   bool _hasUsagePerm = false;
@@ -29,8 +27,8 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this); // Começa a observar o Android
-    _checkPermissions(); // Verifica no milissegundo zero
+    WidgetsBinding.instance.addObserver(this);
+    _checkPermissions();
   }
 
   @override
@@ -39,12 +37,29 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
     super.dispose();
   }
 
-  // Ouve quando o app é minimizado ou volta para a tela
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Quando o pai volta das configurações, checa as permissões de novo automaticamente!
       _checkPermissions();
+      _syncTimeFromEngineToFirebase();
+    }
+  }
+
+  Future<void> _syncTimeFromEngineToFirebase() async {
+    if (!_monitoringStarted) return;
+    try {
+      final remainingTime = await _monitoring.getRemainingTimeFromEngine();
+      if (remainingTime >= 0) {
+        final activeChild = ref.read(activeChildSessionProvider);
+        if (activeChild != null) {
+          await FirebaseFirestore.instance
+              .collection('children')
+              .doc(activeChild.id)
+              .update({'timeBalance': remainingTime});
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro ao sincronizar: $e');
     }
   }
 
@@ -60,7 +75,6 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
         _isCheckingPermissions = false;
       });
 
-      // Se todas as permissões foram dadas, liga o Motor do Android!
       if (_hasAllPermissions && !_monitoringStarted) {
         _startGlobalMonitoring();
       }
@@ -69,16 +83,12 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
 
   Future<void> _startGlobalMonitoring() async {
     _monitoringStarted = true;
-
     await _monitoring.startBlockerService();
-    _syncRulesSilently();
 
     final requiresLogin = await _monitoring.checkRequireLogin();
     if (requiresLogin && mounted) {
-      appRouter.go('/who-is-playing');
-
-      Future.delayed(const Duration(milliseconds: 2500), () {
-        if (mounted) appRouter.go('/who-is-playing');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        appRouter.go('/who-is-playing');
       });
     }
 
@@ -86,9 +96,17 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
       onRequireLogin: () {
         if (mounted) appRouter.go('/who-is-playing');
       },
-      onOutOfTime: () {
+      onOutOfTime: () async {
         if (mounted) {
-          appRouter.go('/child-dashboard');
+          final activeChild = ref.read(activeChildSessionProvider);
+          if (activeChild != null) {
+            await FirebaseFirestore.instance
+                .collection('children')
+                .doc(activeChild.id)
+                .update({'timeBalance': 0});
+          }
+
+          appRouter.go('/who-is-playing');
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -104,40 +122,30 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
     );
   }
 
-  Future<void> _syncRulesSilently() async {
-    try {
-      final user = ref.read(authStateProvider).value;
-      if (user != null) {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-        final deviceMode = userDoc.data()?['deviceMode'] ?? 'shared';
-
-        final childrenSnap = await FirebaseFirestore.instance
-            .collection('children')
-            .where('parentId', isEqualTo: user.uid)
-            .limit(1)
-            .get();
-
-        if (childrenSnap.docs.isNotEmpty) {
-          final childData = childrenSnap.docs.first.data();
-          await _monitoring.syncRulesToEngine(
-            deviceMode: deviceMode,
-            timeBalance: childData['timeBalance'] ?? 0,
-            blockedApps: List<String>.from(childData['blockedApps'] ?? []),
-            isSessionActive: false,
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('Erro no Sync Global: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    // 1. TELA DE CARREGAMENTO INICIAL
+    // =========================================================================
+    // BLINDAGEM CONTRA ROUBO DE FICHAS: Escuta compras em tempo real!
+    // =========================================================================
+    ref.listen(parentChildrenStreamProvider, (previous, next) {
+      final activeChild = ref.read(activeChildSessionProvider);
+      if (activeChild != null && next.value != null && _monitoringStarted) {
+        try {
+          final updatedChild = next.value!.firstWhere(
+            (c) => c.id == activeChild.id,
+          );
+          _monitoring.syncRulesToEngine(
+            deviceMode: 'shared',
+            timeBalance: updatedChild.timeBalance,
+            blockedApps: updatedChild.blockedApps,
+            isSessionActive: true,
+          );
+        } catch (e) {
+          // Ignora se não achar a criança
+        }
+      }
+    });
+
     if (_isCheckingPermissions) {
       return const MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -148,7 +156,6 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
       );
     }
 
-    // 2. O ESCUDO: SE FALTAR PERMISSÃO, TRAVA NESTA TELA!
     if (!_hasAllPermissions) {
       return MaterialApp(
         title: 'Rotina Kids+',
@@ -180,7 +187,6 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
                   ),
                   const SizedBox(height: 40),
 
-                  // Botão Permissão de Uso
                   Card(
                     color: _hasUsagePerm ? Colors.green : Colors.white,
                     shape: RoundedRectangleBorder(
@@ -204,15 +210,6 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      subtitle: Text(
-                        'Permite medir o tempo dos jogos.',
-                        style: TextStyle(
-                          color: _hasUsagePerm
-                              ? Colors.white70
-                              : Colors.grey[700],
-                          fontSize: 12,
-                        ),
-                      ),
                       trailing: _hasUsagePerm
                           ? const Icon(Icons.check_circle, color: Colors.white)
                           : const Icon(
@@ -224,7 +221,6 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
                   ),
                   const SizedBox(height: 16),
 
-                  // Botão Permissão de Sobreposição
                   Card(
                     color: _hasOverlayPerm ? Colors.green : Colors.white,
                     shape: RoundedRectangleBorder(
@@ -250,15 +246,6 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      subtitle: Text(
-                        'Permite mostrar o cronômetro.',
-                        style: TextStyle(
-                          color: _hasOverlayPerm
-                              ? Colors.white70
-                              : Colors.grey[700],
-                          fontSize: 12,
-                        ),
-                      ),
                       trailing: _hasOverlayPerm
                           ? const Icon(Icons.check_circle, color: Colors.white)
                           : const Icon(
@@ -268,14 +255,6 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
                       onTap: () => _monitoring.requestOverlayPermission(),
                     ),
                   ),
-
-                  const Spacer(),
-                  const Text(
-                    'Após conceder as permissões no Android, basta voltar para esta tela.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white54, fontSize: 13),
-                  ),
-                  const SizedBox(height: 20),
                 ],
               ),
             ),
@@ -284,7 +263,6 @@ class _RotinaKidsAppState extends ConsumerState<RotinaKidsApp>
       );
     }
 
-    // 3. CAMINHO LIVRE: TEM TODAS AS PERMISSÕES? ABRE O APP NORMALMENTE!
     return MaterialApp.router(
       title: 'Rotina Kids+',
       theme: AppTheme.lightTheme,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // IMPORT NOVO
 import '../../../data/services/auth_provider.dart';
 
 class ParentProfileScreen extends ConsumerStatefulWidget {
@@ -20,12 +21,11 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
 
-  // Novos campos
   String _selectedGender = 'Prefiro não informar';
   DateTime? _birthDate;
 
-  // --- NOVO: MODO DO APARELHO ---
-  String _deviceMode = 'parent'; // Padrão: Celular do Pai
+  // --- MODO DO APARELHO (Agora Local) ---
+  String _deviceMode = 'parent';
 
   List<Map<String, dynamic>> _linkedEmails = [];
 
@@ -56,7 +56,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     _loadProfileData();
   }
 
-  // --- CÁLCULO AUTOMÁTICO DE IDADE ---
   int? get _calculatedAge {
     if (_birthDate == null) return null;
     final today = DateTime.now();
@@ -73,6 +72,7 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
 
     if (user != null) {
       try {
+        // 1. CARREGA DADOS DO FIREBASE (Nome, Idade, Emails)
         final doc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
@@ -83,9 +83,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
           setState(() {
             _nameController.text = data['name'] ?? user.displayName ?? '';
             _selectedGender = data['gender'] ?? 'Prefiro não informar';
-
-            // Carrega o modo do aparelho salvo no banco de dados
-            _deviceMode = data['deviceMode'] ?? 'parent';
 
             if (data['birthDate'] != null) {
               _birthDate = DateTime.parse(data['birthDate']);
@@ -102,6 +99,13 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
             _nameController.text = user.displayName ?? '';
           });
         }
+
+        // 2. CARREGA O MODO DO APARELHO (Memória Local)
+        final prefs = await SharedPreferences.getInstance();
+        setState(() {
+          // Se não existir, o padrão é 'parent'
+          _deviceMode = prefs.getString('local_device_mode') ?? 'parent';
+        });
       } catch (e) {
         debugPrint('Erro ao carregar perfil: $e');
       }
@@ -118,19 +122,23 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
 
     if (user != null) {
       try {
+        // 1. SALVA DADOS NO FIREBASE (Menos o deviceMode)
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'name': _nameController.text.trim(),
           'gender': _selectedGender,
           'birthDate': _birthDate?.toIso8601String(),
           'linkedEmails': _linkedEmails,
-          'deviceMode': _deviceMode, // Salva o modo do aparelho no banco
           'updatedAt': DateTime.now().toIso8601String(),
         }, SetOptions(merge: true));
+
+        // 2. SALVA O MODO DO APARELHO NA MEMÓRIA LOCAL
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('local_device_mode', _deviceMode);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Perfil atualizado com sucesso!'),
+              content: Text('Perfil e configurações atualizados!'),
               backgroundColor: Colors.green,
             ),
           );
@@ -150,7 +158,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     setState(() => _isSaving = false);
   }
 
-  // --- LÓGICA COMPLETA DE EXCLUSÃO DE CONTA ---
   Future<void> _deleteAccount() async {
     final user = ref.read(authStateProvider).value;
     if (user == null) return;
@@ -160,13 +167,11 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     try {
       final firestore = FirebaseFirestore.instance;
 
-      // 1. Busca todos os filhos deste pai
       final childrenSnapshot = await firestore
           .collection('children')
           .where('parentId', isEqualTo: user.uid)
           .get();
 
-      // 2. Apaga as tarefas de cada filho, e depois apaga o filho
       for (var childDoc in childrenSnapshot.docs) {
         final tasksSnapshot = await firestore
             .collection('tasks')
@@ -178,19 +183,14 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
         await childDoc.reference.delete();
       }
 
-      // 3. Apaga o documento do usuário
       await firestore.collection('users').doc(user.uid).delete();
-
-      // 4. Exclui a conta do Firebase Auth (Google)
       await user.delete();
 
-      // Volta para a tela de login
       if (mounted) {
         context.go('/login');
       }
     } catch (e) {
       if (mounted) {
-        // O Firebase exige que o usuário tenha feito login recentemente para excluir a conta por segurança.
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -352,7 +352,7 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
     final canAddMore = _linkedEmails.length < 7;
 
     return Scaffold(
-      backgroundColor: Colors.grey[100], // Adicionado para destacar os cards
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
         title: const Text('Meu Perfil'),
         actions: [
@@ -385,7 +385,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // --- CABEÇALHO COM FOTO DO GOOGLE E EMAIL ---
                     if (user != null) ...[
                       CircleAvatar(
                         radius: 50,
@@ -413,7 +412,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
                       const SizedBox(height: 30),
                     ],
 
-                    // --- NOVA SEÇÃO: CONFIGURAÇÃO DO APARELHO ---
                     Align(
                       alignment: Alignment.centerLeft,
                       child: const Text(
@@ -505,7 +503,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
 
                     const SizedBox(height: 40),
 
-                    // --- DADOS PESSOAIS ---
                     Align(
                       alignment: Alignment.centerLeft,
                       child: const Text(
@@ -598,7 +595,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
 
                     const SizedBox(height: 40),
 
-                    // --- REDE DE APOIO ---
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -717,7 +713,6 @@ class _ParentProfileScreenState extends ConsumerState<ParentProfileScreen> {
                     const Divider(),
                     const SizedBox(height: 20),
 
-                    // --- ZONA DE PERIGO (EXCLUIR CONTA) ---
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(

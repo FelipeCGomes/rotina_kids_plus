@@ -22,11 +22,15 @@ class MainActivity: FlutterActivity() {
         
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
-                // Lê se o Kotlin abriu o app exigindo login
                 "checkRequireLogin" -> {
                     val req = intent.getBooleanExtra("require_login", false)
                     intent.removeExtra("require_login")
                     result.success(req)
+                }
+                "getRemainingTime" -> {
+                    val prefs = getSharedPreferences("RotinaKidsPrefs", Context.MODE_PRIVATE)
+                    val timeBalance = prefs.getInt("timeBalance", -1)
+                    result.success(timeBalance)
                 }
                 "checkUsagePermission" -> result.success(hasUsageStatsPermission())
                 "requestUsagePermission" -> {
@@ -56,7 +60,7 @@ class MainActivity: FlutterActivity() {
                     result.success(true)
                 }
                 "syncRules" -> {
-                    val deviceMode = call.argument<String>("deviceMode") ?: "parent"
+                    val deviceMode = call.argument<String>("deviceMode") ?: "shared"
                     val timeBalance = call.argument<Int>("timeBalance") ?: 0
                     val blockedAppsList = call.argument<List<String>>("blockedApps") ?: emptyList()
                     val isSessionActive = call.argument<Boolean>("isSessionActive") ?: false
@@ -67,6 +71,7 @@ class MainActivity: FlutterActivity() {
                         .putInt("timeBalance", timeBalance)
                         .putString("blockedApps", blockedAppsList.joinToString(","))
                         .putBoolean("isSessionActive", isSessionActive)
+                        .putBoolean("forceSync", true) // A MARRETA QUE FORÇA O KOTLIN A ACEITAR O TEMPO!
                         .apply()
                         
                     result.success(true)
@@ -81,7 +86,6 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    // --- A MÁGICA: QUANDO O APP É PUXADO PARA A FRENTE PELO BLOQUEADOR ---
     override fun onNewIntent(newIntent: Intent) {
         super.onNewIntent(newIntent)
         intent = newIntent 
@@ -91,11 +95,16 @@ class MainActivity: FlutterActivity() {
             newIntent.removeExtra("require_login")
         }
         
-        // NOVO: Ouve se foi expulso por falta de tempo
         if (newIntent.getBooleanExtra("out_of_time", false)) {
             methodChannel?.invokeMethod("showOutOfTimeWarning", null)
             newIntent.removeExtra("out_of_time")
         }
+    }
+
+    override fun onPostResume() {
+        super.onPostResume()
+        window.decorView.clearFocus()
+        window.decorView.requestFocus()
     }
 
     private fun hasUsageStatsPermission(): Boolean {

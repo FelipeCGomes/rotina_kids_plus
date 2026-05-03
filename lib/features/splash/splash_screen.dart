@@ -20,7 +20,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   Future<void> _checkAuth() async {
     await Future.delayed(const Duration(seconds: 2));
 
-    // Leitura síncrona e direta no Firebase (100% à prova de falhas para sessão)
+    // Leitura síncrona e direta no Firebase
     final user = FirebaseAuth.instance.currentUser;
 
     if (mounted) {
@@ -35,25 +35,31 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.primary,
-      body: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.child_care, size: 100, color: Colors.white),
-            SizedBox(height: 20),
-            Text(
-              'Rotina Kids+',
-              style: TextStyle(
-                fontSize: 32,
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
+      backgroundColor: const Color(0xFF0A1F44),
+      body: Stack(
+        fit: StackFit.expand, // Força a tela a usar 100% do espaço disponível
+        children: [
+          // 1. A IMAGEM DE FUNDO
+          Image.asset(
+            'assets/img/splash_screen.png',
+            fit: BoxFit
+                .cover, // Faz a imagem preencher toda a tela sem deixar bordas
+          ),
+
+          // 2. O INDICADOR DE CARREGAMENTO (Por cima da imagem)
+          const SafeArea(
+            child: Column(
+              mainAxisAlignment:
+                  MainAxisAlignment.end, // Joga a rodinha lá pro final
+              children: [
+                CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                SizedBox(
+                  height: 60,
+                ), // Dá um respiro para não ficar colado no rodapé
+              ],
             ),
-            SizedBox(height: 20),
-            CircularProgressIndicator(color: Colors.white),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

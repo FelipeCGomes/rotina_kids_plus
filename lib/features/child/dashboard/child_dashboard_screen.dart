@@ -3,13 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
-import 'package:avatar_maker/avatar_maker.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../../data/models/child_model.dart';
-import '../../../data/services/firestore_providers.dart';
+import '../../../data/services/firestore_providers.dart'
+    hide todayTasksStreamProvider;
 import '../../../data/services/reward_providers.dart';
-import '../../../data/services/child_action_providers.dart' hide todayTasksStreamProvider;
-import '../../../data/services/child_providers.dart'; // IMPORTANTE: Gaveta correta
+import '../../../data/services/child_action_providers.dart';
+import '../../../data/services/child_providers.dart';
 import '../../../core/utils/tts_service.dart';
+
+const platform = MethodChannel('com.rotinakids.app/monitoring');
 
 final liveActiveChildProvider = StreamProvider.family<ChildModel?, String>((
   ref,
@@ -25,31 +28,45 @@ final liveActiveChildProvider = StreamProvider.family<ChildModel?, String>((
       });
 });
 
-class ChildDashboardScreen extends ConsumerStatefulWidget {
+class ChildDashboardScreen extends ConsumerWidget {
   const ChildDashboardScreen({super.key});
 
   @override
-  ConsumerState<ChildDashboardScreen> createState() =>
-      _ChildDashboardScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeSession = ref.watch(selectedChildProvider);
+
+    if (activeSession == null) {
+      return const Scaffold(
+        body: Center(child: Text('Nenhuma criança selecionada.')),
+      );
+    }
+
+    return _ChildDashboardInner(
+      key: ValueKey(activeSession.id),
+      childSession: activeSession,
+    );
+  }
 }
 
-class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
+class _ChildDashboardInner extends ConsumerStatefulWidget {
+  final ChildModel childSession;
+  const _ChildDashboardInner({super.key, required this.childSession});
+
+  @override
+  ConsumerState<_ChildDashboardInner> createState() =>
+      _ChildDashboardInnerState();
+}
+
+class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
     with TickerProviderStateMixin {
   late TabController _tabController;
-
-  String _lastAvatarTimestamp = '';
-  late PersistentAvatarMakerController _avatarController;
-
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
-    // OS OUVINTES ANTIGOS FORAM REMOVIDOS DAQUI, POIS O APP.DART JÁ FAZ ISSO!
-
     _tabController = TabController(length: 3, vsync: this);
-    _avatarController = PersistentAvatarMakerController();
 
     _pulseController = AnimationController(
       vsync: this,
@@ -69,15 +86,13 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
   }
 
   Widget _renderAvatar(String avatarData, {double size = 40}) {
-    if (avatarData.startsWith('custom_')) {
-      if (_lastAvatarTimestamp != avatarData) {
-        _lastAvatarTimestamp = avatarData;
-        _avatarController = PersistentAvatarMakerController();
-      }
-      return AvatarMakerAvatar(
-        key: ValueKey(avatarData),
-        controller: _avatarController,
-        radius: size / 2,
+    if (avatarData.contains('<svg')) {
+      return SizedBox(
+        width: size,
+        height: size,
+        child: ClipOval(
+          child: SvgPicture.string(avatarData, fit: BoxFit.cover),
+        ),
       );
     }
     return Icon(
@@ -100,16 +115,16 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
     }
   }
 
-  void _showParentPinDialog(BuildContext context) {
+  void _showParentPinDialog() {
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Fechar',
       barrierColor: Colors.black87,
       transitionDuration: const Duration(milliseconds: 400),
-      pageBuilder: (context, animation, secondaryAnimation) =>
+      pageBuilder: (ctx, animation, secondaryAnimation) =>
           const SizedBox.shrink(),
-      transitionBuilder: (context, anim1, anim2, child) {
+      transitionBuilder: (ctx, anim1, anim2, child) {
         final curvedValue = Curves.elasticOut.transform(anim1.value);
         return Transform.scale(
           scale: curvedValue,
@@ -131,29 +146,36 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
     );
   }
 
-  void _showSuccessAnimation(BuildContext context, int xp) {
+  // =====================================================================
+  // NOVA ANIMAÇÃO: Avisa a criança que foi enviado para os pais!
+  // =====================================================================
+  void _showSuccessAnimation(int xp) {
     HapticFeedback.heavyImpact();
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black87,
       transitionDuration: const Duration(milliseconds: 600),
-      pageBuilder: (context, animation, secondaryAnimation) =>
+      pageBuilder: (ctx, animation, secondaryAnimation) =>
           const SizedBox.shrink(),
-      transitionBuilder: (context, a1, a2, child) {
+      transitionBuilder: (ctx, a1, a2, child) {
         final curvedValue = Curves.elasticOut.transform(a1.value);
         return Transform.scale(
           scale: curvedValue,
           child: AlertDialog(
             backgroundColor: Colors.transparent,
             elevation: 0,
-            content: Column(
+            content: const Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.star_rounded, color: Colors.amber, size: 150),
-                const SizedBox(height: 20),
-                const Text(
-                  'EXCELENTE!',
+                Icon(
+                  Icons.mark_email_read_rounded,
+                  color: Colors.amber,
+                  size: 120,
+                ),
+                SizedBox(height: 20),
+                Text(
+                  'ENVIADO!',
                   style: TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.w900,
@@ -161,11 +183,11 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
                     letterSpacing: 2,
                   ),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 Text(
-                  '+$xp MOEDAS',
-                  style: const TextStyle(
-                    fontSize: 30,
+                  'Aguardando aprovação...',
+                  style: TextStyle(
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: Colors.amber,
                   ),
@@ -183,16 +205,16 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
     });
   }
 
-  void _showTimePurchaseAnimation(BuildContext context, int minutes) {
+  void _showTimePurchaseAnimation(int minutes) {
     HapticFeedback.heavyImpact();
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black87,
       transitionDuration: const Duration(milliseconds: 600),
-      pageBuilder: (context, animation, secondaryAnimation) =>
+      pageBuilder: (ctx, animation, secondaryAnimation) =>
           const SizedBox.shrink(),
-      transitionBuilder: (context, a1, a2, child) {
+      transitionBuilder: (ctx, a1, a2, child) {
         final curvedValue = Curves.elasticOut.transform(a1.value);
         return Transform.scale(
           scale: curvedValue,
@@ -236,32 +258,32 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
     });
   }
 
-  void _showPurchaseAnimation(BuildContext context) {
+  void _showPurchaseAnimation() {
     HapticFeedback.mediumImpact();
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black87,
       transitionDuration: const Duration(milliseconds: 600),
-      pageBuilder: (context, animation, secondaryAnimation) =>
+      pageBuilder: (ctx, animation, secondaryAnimation) =>
           const SizedBox.shrink(),
-      transitionBuilder: (context, a1, a2, child) {
+      transitionBuilder: (ctx, a1, a2, child) {
         final curvedValue = Curves.elasticOut.transform(a1.value);
         return Transform.scale(
           scale: curvedValue,
           child: AlertDialog(
             backgroundColor: Colors.transparent,
             elevation: 0,
-            content: Column(
+            content: const Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   Icons.card_giftcard_rounded,
-                  color: Theme.of(context).colorScheme.primary,
+                  color: Colors.white,
                   size: 120,
                 ),
-                const SizedBox(height: 20),
-                const Text(
+                SizedBox(height: 20),
+                Text(
                   'PEDIDO ENVIADO!',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -270,8 +292,8 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 10),
-                const Text(
+                SizedBox(height: 10),
+                Text(
                   'Aguardando aprovação.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 18, color: Colors.white70),
@@ -291,17 +313,10 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    // CORREÇÃO: Lendo a "gaveta" correta onde a tela de login guardou a criança!
-    final activeSession = ref.watch(selectedChildProvider);
+    final liveChildAsync = ref.watch(
+      liveActiveChildProvider(widget.childSession.id),
+    );
     final ttsService = ref.read(ttsServiceProvider);
-
-    if (activeSession == null) {
-      return const Scaffold(
-        body: Center(child: Text('Nenhuma criança selecionada.')),
-      );
-    }
-
-    final liveChildAsync = ref.watch(liveActiveChildProvider(activeSession.id));
 
     return Scaffold(
       appBar: AppBar(
@@ -379,7 +394,7 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
             tooltip: 'Área dos Pais',
             onPressed: () {
               HapticFeedback.mediumImpact();
-              _showParentPinDialog(context);
+              _showParentPinDialog();
             },
           ),
           const SizedBox(width: 8),
@@ -403,7 +418,7 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildMissionsTab(activeSession.id, ttsService),
+          _buildMissionsTab(widget.childSession.id, ttsService),
           liveChildAsync.when(
             data: (child) => _buildStoreTab(child!),
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -459,7 +474,7 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
               tween: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero),
               duration: Duration(milliseconds: 400 + (index * 100)),
               curve: Curves.easeOutCubic,
-              builder: (context, offset, child) {
+              builder: (ctx, offset, child) {
                 return FractionalTranslation(translation: offset, child: child);
               },
               child: Card(
@@ -504,10 +519,14 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
                       ),
                     ),
                     onPressed: () async {
+                      // ===================================================================
+                      // NOVO AVISO DE VOZ: Avisa a criança que foi para aprovação
+                      // ===================================================================
                       ttsService.speak(
-                        'Muito bem! Ganhou ${task.xpReward} moedas.',
+                        'Muito bem! Missão enviada para os seus pais aprovarem.',
                       );
-                      _showSuccessAnimation(context, task.xpReward);
+                      _showSuccessAnimation(task.xpReward);
+
                       await Future.delayed(const Duration(milliseconds: 500));
                       if (mounted) {
                         ref
@@ -656,6 +675,9 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
                               onPressed: canBuyTime
                                   ? () async {
                                       try {
+                                        final newTimeBalance =
+                                            child.timeBalance + minutesGained;
+
                                         await FirebaseFirestore.instance
                                             .collection('children')
                                             .doc(child.id)
@@ -668,9 +690,17 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
                                                     minutesGained,
                                                   ),
                                             });
+
+                                        await platform
+                                            .invokeMethod('syncRules', {
+                                              'deviceMode': 'shared',
+                                              'timeBalance': newTimeBalance,
+                                              'blockedApps': child.blockedApps,
+                                              'isSessionActive': true,
+                                            });
+
                                         if (mounted) {
                                           _showTimePurchaseAnimation(
-                                            context,
                                             minutesGained,
                                           );
                                         }
@@ -735,7 +765,7 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
             childAspectRatio: 0.75,
           ),
           itemCount: rewards.length,
-          itemBuilder: (context, index) {
+          itemBuilder: (ctx, index) {
             final reward = rewards[index];
             final canAfford = child.currentXp >= reward.xpCost;
 
@@ -802,7 +832,7 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
                       ),
                       onPressed: canAfford
                           ? () async {
-                              _showPurchaseAnimation(context);
+                              _showPurchaseAnimation();
                               await ref
                                   .read(childActionServiceProvider)
                                   .buyReward(child, reward);
@@ -824,57 +854,74 @@ class _ChildDashboardScreenState extends ConsumerState<ChildDashboardScreen>
   }
 
   Widget _buildAvatarTab(ChildModel child) {
-    final hasCustomAvatar = child.avatarId.startsWith('custom_');
+    final hasCustomAvatar = child.avatarId.contains('<svg');
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          height: 300,
-          width: 300,
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            shape: BoxShape.circle,
-            boxShadow: const [
-              BoxShadow(color: Colors.black12, blurRadius: 15, spreadRadius: 5),
-            ],
-          ),
-          child: ClipOval(
-            child: hasCustomAvatar
-                ? _renderAvatar(child.avatarId, size: 300)
-                : Icon(
-                    _getFallbackIcon(child.avatarId),
-                    size: 150,
-                    color: Theme.of(context).colorScheme.primary,
+    // =================================================================
+    // A MÁGICA: SingleChildScrollView permite rolar a tela se o tablet deitar!
+    // =================================================================
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: 40,
+        ), // Um respiro nas bordas
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              height: 300,
+              width: 300,
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                shape: BoxShape.circle,
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 15,
+                    spreadRadius: 5,
                   ),
-          ),
-        ),
-        const SizedBox(height: 40),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: ElevatedButton.icon(
-            icon: const Icon(Icons.face_retouching_natural, size: 28),
-            label: Text(
-              hasCustomAvatar
-                  ? 'MUDAR ROUPAS E ACESSÓRIOS'
-                  : 'CRIAR O MEU AVATAR',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              minimumSize: const Size(double.infinity, 65),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
+                ],
+              ),
+              child: ClipOval(
+                child: hasCustomAvatar
+                    ? _renderAvatar(child.avatarId, size: 300)
+                    : Icon(
+                        _getFallbackIcon(child.avatarId),
+                        size: 150,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
               ),
             ),
-            onPressed: () {
-              context.push('/avatar-creator', extra: child);
-            },
-          ),
+            const SizedBox(height: 40),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.face_retouching_natural, size: 28),
+                label: Text(
+                  hasCustomAvatar
+                      ? 'MUDAR ROUPAS E ACESSÓRIOS'
+                      : 'CRIAR O MEU AVATAR',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  minimumSize: const Size(double.infinity, 65),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                ),
+                onPressed: () {
+                  context.push('/avatar-creator', extra: child);
+                },
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -933,69 +980,111 @@ class _ParentPinPadState extends State<ParentPinPad> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.lock_outline,
-            size: 50,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Área dos Pais',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            _hasError ? 'Senha incorreta!' : 'Digite o código de 4 dígitos',
-            style: TextStyle(
-              fontSize: 16,
-              color: _hasError
-                  ? Theme.of(context).colorScheme.error
-                  : Colors.grey,
+    // =================================================================
+    // A MÁGICA 2: O teclado numérico agora também rola se a tela achatar!
+    // =================================================================
+    return SingleChildScrollView(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.lock_outline,
+              size: 50,
+              color: Theme.of(context).colorScheme.primary,
             ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(4, (index) {
-              final isFilled = index < _pin.length;
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 8),
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isFilled
-                      ? Theme.of(context).colorScheme.primary
-                      : Colors.grey[300],
-                  border: Border.all(
-                    color: _hasError
-                        ? Theme.of(context).colorScheme.error
-                        : Colors.transparent,
-                    width: 2,
+            const SizedBox(height: 10),
+            const Text(
+              'Área dos Pais',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              _hasError ? 'Senha incorreta!' : 'Digite o código de 4 dígitos',
+              style: TextStyle(
+                fontSize: 16,
+                color: _hasError
+                    ? Theme.of(context).colorScheme.error
+                    : Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(4, (index) {
+                final isFilled = index < _pin.length;
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isFilled
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.grey[300],
+                    border: Border.all(
+                      color: _hasError
+                          ? Theme.of(context).colorScheme.error
+                          : Colors.transparent,
+                      width: 2,
+                    ),
                   ),
+                );
+              }),
+            ),
+            const SizedBox(height: 30),
+
+            Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildKey('1'),
+                    const SizedBox(width: 20),
+                    _buildKey('2'),
+                    const SizedBox(width: 20),
+                    _buildKey('3'),
+                  ],
                 ),
-              );
-            }),
-          ),
-          const SizedBox(height: 30),
-          Wrap(
-            spacing: 20,
-            runSpacing: 20,
-            alignment: WrapAlignment.center,
-            children: [
-              for (var i = 1; i <= 9; i++) _buildKey(i.toString()),
-              _buildKey(''),
-              _buildKey('0'),
-              _buildKey('X', isDelete: true),
-            ],
-          ),
-        ],
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildKey('4'),
+                    const SizedBox(width: 20),
+                    _buildKey('5'),
+                    const SizedBox(width: 20),
+                    _buildKey('6'),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildKey('7'),
+                    const SizedBox(width: 20),
+                    _buildKey('8'),
+                    const SizedBox(width: 20),
+                    _buildKey('9'),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildKey(''), // Espaço invisível para alinhar
+                    const SizedBox(width: 20),
+                    _buildKey('0'),
+                    const SizedBox(width: 20),
+                    _buildKey('X', isDelete: true),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
