@@ -64,6 +64,7 @@ class MainActivity: FlutterActivity() {
                     val timeBalance = call.argument<Int>("timeBalance") ?: 0
                     val blockedAppsList = call.argument<List<String>>("blockedApps") ?: emptyList()
                     val isSessionActive = call.argument<Boolean>("isSessionActive") ?: false
+                    val childId = call.argument<String>("childId") ?: "" // PEGA O ID AQUI
 
                     val prefs = getSharedPreferences("RotinaKidsPrefs", Context.MODE_PRIVATE)
                     prefs.edit()
@@ -71,7 +72,8 @@ class MainActivity: FlutterActivity() {
                         .putInt("timeBalance", timeBalance)
                         .putString("blockedApps", blockedAppsList.joinToString(","))
                         .putBoolean("isSessionActive", isSessionActive)
-                        .putBoolean("forceSync", true) // A MARRETA QUE FORÇA O KOTLIN A ACEITAR O TEMPO!
+                        .putString("childId", childId) // SALVA O ID AQUI
+                        .putBoolean("forceSync", true)
                         .apply()
                         
                     result.success(true)

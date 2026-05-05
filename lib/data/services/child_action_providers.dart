@@ -28,9 +28,6 @@ class ChildActionService {
       final batch = _db.batch();
       final logRef = _db.collection('task_logs').doc();
 
-      // ===================================================================
-      // CORREÇÃO 1: O status agora é "pending" (Pendente de Aprovação)
-      // ===================================================================
       batch.set(logRef, {
         'id': logRef.id,
         'taskId': taskId,
@@ -41,11 +38,6 @@ class ChildActionService {
         'dateString': todayStr,
         'status': 'pending',
       });
-
-      // ===================================================================
-      // CORREÇÃO 2: Removemos o código que dava as moedas (XP) automaticamente.
-      // Agora o XP só cai na conta quando os Pais aprovarem lá no Painel deles!
-      // ===================================================================
 
       await batch.commit();
     } finally {
@@ -102,7 +94,6 @@ class ChildActionService {
 final childActionServiceProvider = Provider((ref) => ChildActionService());
 final activeChildSessionProvider = StateProvider<ChildModel?>((ref) => null);
 
-// 1. Ouve todas as tarefas criadas para essa criança
 final _rawTasksProvider = StreamProvider.family<List<TaskModel>, String>((
   ref,
   childId,
@@ -118,7 +109,6 @@ final _rawTasksProvider = StreamProvider.family<List<TaskModel>, String>((
       );
 });
 
-// 2. Ouve todos os logs da criança de HOJE
 final _rawLogsProvider = StreamProvider.family<List<Map<String, dynamic>>, String>((
   ref,
   childId,
@@ -135,7 +125,6 @@ final _rawLogsProvider = StreamProvider.family<List<Map<String, dynamic>>, Strin
       .map((snap) => snap.docs.map((doc) => doc.data()).toList());
 });
 
-// 3. O Cérebro Central: Cruza as duas listas em tempo real!
 final todayTasksStreamProvider =
     Provider.family<AsyncValue<List<TaskModel>>, String>((ref, childId) {
       final tasksAsync = ref.watch(_rawTasksProvider(childId));
@@ -157,22 +146,37 @@ final todayTasksStreamProvider =
       final allLogs = logsAsync.value ?? [];
 
       final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
       const weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
       final currentDayStr = weekDays[now.weekday - 1];
 
-      // Puxa os IDs das tarefas feitas hoje (independentemente se estão pendentes ou aprovadas, elas somem da tela da criança!)
       final completedTaskIdsToday = allLogs
           .map((log) => log['taskId'] as String)
           .toSet();
 
       final pendingTasksToday = allTasks.where((task) {
+        // 1. Já feita hoje?
         if (completedTaskIdsToday.contains(task.id)) return false;
 
-        if (task.isRecurring && task.daysOfWeek.isNotEmpty) {
-          if (!task.daysOfWeek.contains(currentDayStr)) return false;
-        }
+        final taskDate = DateTime(
+          task.startDate.year,
+          task.startDate.month,
+          task.startDate.day,
+        );
 
-        return true;
+        // 2. A tarefa é para o futuro?
+        if (taskDate.isAfter(todayStart)) return false;
+
+        // 3. Regras de repetição ou dia único
+        if (task.isRecurring) {
+          if (task.daysOfWeek.isNotEmpty) {
+            return task.daysOfWeek.contains(currentDayStr);
+          }
+          return true; // Repetição diária genérica
+        } else {
+          // Se for missão única, a data tem que ser EXATAMENTE a de hoje!
+          return taskDate.isAtSameMomentAs(todayStart);
+        }
       }).toList();
 
       return AsyncValue.data(pendingTasksToday);

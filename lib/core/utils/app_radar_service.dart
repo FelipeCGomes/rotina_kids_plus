@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart'; // IMPORT NOVO: Para forçar a vibração!
 import 'notification_service.dart';
 
 class AppRadarService {
@@ -10,6 +11,9 @@ class AppRadarService {
 
   bool _isParentRadarOn = false;
   bool _isFirstLoad = true;
+
+  bool _isChildRadarOn = false;
+  bool _isFirstChildLoad = true;
 
   // =================================================================
   // RADAR DOS PAIS: Escuta se as crianças mandaram missões!
@@ -24,8 +28,7 @@ class AppRadarService {
         .where('status', isEqualTo: 'pending')
         .snapshots()
         .listen((snapshot) {
-          // A grande sacada: No primeiro milissegundo que a tela abre, o Firebase
-          // cospe todo o histórico antigo. Nós ignoramos isso para não apitar coisas do passado!
+          // Ignora o histórico antigo ao abrir o aplicativo
           if (_isFirstLoad) {
             _isFirstLoad = false;
             return;
@@ -41,7 +44,49 @@ class AppRadarService {
                       .hashCode, // Cria um ID único baseado na tarefa
                   title: 'Nova Missão Concluída! 🌟',
                   body:
-                      'A missão "${data['taskTitle']}" foi enviada e está aguardando a sua aprovação.',
+                      'A missão "${data['taskTitle']}" foi enviada e está a aguardar a sua aprovação.',
+                );
+              }
+            }
+          }
+        });
+  }
+
+  // =================================================================
+  // RADAR DA CRIANÇA: Escuta os "Cutucões" (Lembretes) dos Pais!
+  // =================================================================
+  void startChildRadar(String childId) {
+    if (_isChildRadarOn || childId.isEmpty) return;
+    _isChildRadarOn = true;
+
+    FirebaseFirestore.instance
+        .collection('nudges')
+        .where('childId', isEqualTo: childId)
+        .snapshots()
+        .listen((snapshot) {
+          // Ignora os avisos antigos para não apitar tudo de uma vez ao abrir o tablet
+          if (_isFirstChildLoad) {
+            _isFirstChildLoad = false;
+            return;
+          }
+
+          for (var change in snapshot.docChanges) {
+            // Dispara APENAS quando o Pai aperta o botão agora!
+            if (change.type == DocumentChangeType.added) {
+              final data = change.doc.data();
+              if (data != null) {
+                // Força o tablet a vibrar duas vezes forte!
+                HapticFeedback.heavyImpact();
+                Future.delayed(
+                  const Duration(milliseconds: 300),
+                  () => HapticFeedback.heavyImpact(),
+                );
+
+                // Solta a notificação no topo do ecrã
+                NotificationService().showNotification(
+                  id: DateTime.now().millisecond,
+                  title: '🔔 Lembrete dos Pais!',
+                  body: 'Não te esqueças de: ${data['title']}!',
                 );
               }
             }

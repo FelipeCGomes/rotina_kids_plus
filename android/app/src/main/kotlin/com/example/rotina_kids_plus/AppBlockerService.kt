@@ -17,15 +17,22 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.view.Gravity
-import android.view.MotionEvent // IMPORTANTE: Para detectar o toque na tela
-import android.view.View      // IMPORTANTE: Para gerenciar a View do cronômetro
+import android.view.MotionEvent
+import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldValue
 
 class AppBlockerService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var prefs: SharedPreferences
+    
+    // =========================================================
+    // CORREÇÃO: A VARIÁVEL ESTÁ AQUI NO TOPO AGORA!
+    // =========================================================
+    private var lastHeartbeatTime: Long = 0
 
     private var windowManager: WindowManager? = null
     private var timerOverlayView: LinearLayout? = null
@@ -34,7 +41,6 @@ class AppBlockerService : Service() {
 
     private var currentBalanceSeconds = 0
     private var lastTimeBalanceMinute = -1
-
     private var lastKnownApp: String = ""
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -43,7 +49,6 @@ class AppBlockerService : Service() {
         super.onCreate()
         prefs = getSharedPreferences("RotinaKidsPrefs", Context.MODE_PRIVATE)
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        
         createNotificationChannel()
         val notification = Notification.Builder(this, "blocker_channel")
             .setContentTitle("Rotina Kids+")
@@ -51,14 +56,33 @@ class AppBlockerService : Service() {
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .build()
         startForeground(1, notification)
-
         handler.post(monitoringRunnable)
     }
 
     private val monitoringRunnable = object : Runnable {
         override fun run() {
             checkRulesAndBlock()
+            sendHeartbeat() // Envia sinal de "Online"
             handler.postDelayed(this, 1000)
+        }
+    }
+
+    // A MÁGICA: Avisa o Firebase que a criança está mexendo no aparelho
+    private fun sendHeartbeat() {
+        val childId = prefs.getString("childId", "") ?: ""
+        val currentTime = System.currentTimeMillis()
+
+        // Envia apenas 1 vez a cada 60 segundos para não gastar bateria/internet
+        if (childId.isNotEmpty() && (currentTime - lastHeartbeatTime) > 60000) {
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("children")
+                    .document(childId)
+                    .update("lastActive", FieldValue.serverTimestamp())
+                lastHeartbeatTime = currentTime
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -66,7 +90,6 @@ class AppBlockerService : Service() {
         val deviceMode = prefs.getString("deviceMode", "shared") ?: "shared"
         val isSessionActive = prefs.getBoolean("isSessionActive", false)
         val savedTimeBalance = prefs.getInt("timeBalance", 0)
-        
         val forceSync = prefs.getBoolean("forceSync", false)
         
         if (forceSync || lastTimeBalanceMinute != savedTimeBalance) {
@@ -77,7 +100,6 @@ class AppBlockerService : Service() {
         
         val blockedApps = prefs.getString("blockedApps", "") ?: ""
         val blockedList = blockedApps.split(",").filter { it.isNotEmpty() }
-        
         val topApp = getTopApp()
 
         if (topApp == packageName || topApp.isEmpty()) {
@@ -90,30 +112,23 @@ class AppBlockerService : Service() {
                 hideTimerOverlay()
                 return
             }
-
             if (deviceMode == "shared" && !isSessionActive) {
                 hideTimerOverlay()
                 launchAppWithAction("require_login")
                 return
             }
-
             if (currentBalanceSeconds <= 0) {
                 hideTimerOverlay()
-                prefs.edit()
-                    .putInt("timeBalance", 0)
-                    .putBoolean("isSessionActive", false)
-                    .apply()
+                prefs.edit().putInt("timeBalance", 0).putBoolean("isSessionActive", false).apply()
                 lastTimeBalanceMinute = 0
                 launchAppWithAction("out_of_time")
             } else {
                 currentBalanceSeconds-- 
-                
                 if (currentBalanceSeconds % 60 == 0) {
                     val newMinutes = currentBalanceSeconds / 60
                     prefs.edit().putInt("timeBalance", newMinutes).apply()
                     lastTimeBalanceMinute = newMinutes
                 }
-                
                 showOrUpdateTimerOverlay(currentBalanceSeconds)
             }
         } else {
@@ -125,103 +140,38 @@ class AppBlockerService : Service() {
         val m = secondsLeft / 60
         val s = secondsLeft % 60
         val timeText = String.format("%02d:%02d", m, s)
-
         if (!isTimerShowing) {
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) 
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY 
-                else WindowManager.LayoutParams.TYPE_PHONE,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT
             )
-            // Alterado para Top e Start para facilitar a matemática do arrasto na tela
-            params.gravity = Gravity.TOP or Gravity.START
-            params.x = 50
-            params.y = 200
-
+            params.gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            params.x = 20
             timerOverlayView = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(40, 20, 40, 20)
+                setPadding(30, 15, 30, 15)
                 background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#CC000000")) // Fundo translúcido bonito
-                    cornerRadius = 60f
+                    setColor(Color.parseColor("#B3000000")) 
+                    cornerRadius = 50f
                 }
-
                 timerTextView = TextView(this@AppBlockerService).apply {
                     text = timeText
-                    textSize = 22f
+                    textSize = 20f
                     setTextColor(Color.WHITE)
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                 }
                 addView(timerTextView)
-
-                // ========================================================
-                // MAGIA ACONTECENDO: Listener de Toque e Arrasto!
-                // ========================================================
-                setOnTouchListener(object : View.OnTouchListener {
-                    private var initialX = 0
-                    private var initialY = 0
-                    private var initialTouchX = 0f
-                    private var initialTouchY = 0f
-                    private var isClick = false
-
-                    override fun onTouch(v: View, event: MotionEvent): Boolean {
-                        when (event.action) {
-                            MotionEvent.ACTION_DOWN -> {
-                                // Quando a criança encosta o dedo, salva a posição atual
-                                initialX = params.x
-                                initialY = params.y
-                                initialTouchX = event.rawX
-                                initialTouchY = event.rawY
-                                isClick = true
-                                return true
-                            }
-                            MotionEvent.ACTION_MOVE -> {
-                                // Calcula o quanto o dedo se moveu
-                                val dx = (event.rawX - initialTouchX).toInt()
-                                val dy = (event.rawY - initialTouchY).toInt()
-                                
-                                // Se o dedo moveu mais de 10 pixels, não é um clique, é um arrasto
-                                if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-                                    isClick = false
-                                }
-                                
-                                // Atualiza a posição da bolha na tela
-                                params.x = initialX + dx
-                                params.y = initialY + dy
-                                windowManager?.updateViewLayout(timerOverlayView, params)
-                                return true
-                            }
-                            MotionEvent.ACTION_UP -> {
-                                // Se o dedo soltou a tela e não arrastou (foi só um toque)
-                                if (isClick) {
-                                    // Pede ao Rotina Kids+ para abrir a tela de trocar perfil!
-                                    launchAppWithAction("require_login")
-                                }
-                                return true
-                            }
-                        }
-                        return false
-                    }
-                })
             }
-
             try {
                 windowManager?.addView(timerOverlayView, params)
                 isTimerShowing = true
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) { e.printStackTrace() }
         } else {
             timerTextView?.text = timeText
-            
-            if (secondsLeft <= 60) {
-                timerTextView?.setTextColor(Color.parseColor("#FF5252")) // Vermelho no final
-            } else {
-                timerTextView?.setTextColor(Color.WHITE)
-            }
+            timerTextView?.setTextColor(if (secondsLeft <= 60) Color.parseColor("#FF5252") else Color.WHITE)
         }
     }
 
@@ -230,28 +180,21 @@ class AppBlockerService : Service() {
             try {
                 windowManager?.removeView(timerOverlayView)
                 isTimerShowing = false
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) { e.printStackTrace() }
         }
     }
 
     private fun getTopApp(): String {
         val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val time = System.currentTimeMillis()
-        
         val usageEvents = usageStatsManager.queryEvents(time - 10000, time)
         val event = UsageEvents.Event()
-        
         while (usageEvents.hasNextEvent()) {
             usageEvents.getNextEvent(event)
             if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
                 lastKnownApp = event.packageName
-            } else if (event.eventType == UsageEvents.Event.ACTIVITY_PAUSED || 
-                       event.eventType == UsageEvents.Event.ACTIVITY_STOPPED) {
-                if (event.packageName == lastKnownApp) {
-                    lastKnownApp = ""
-                }
+            } else if (event.eventType == UsageEvents.Event.ACTIVITY_PAUSED || event.eventType == UsageEvents.Event.ACTIVITY_STOPPED) {
+                if (event.packageName == lastKnownApp) { lastKnownApp = "" }
             }
         }
         return lastKnownApp
@@ -260,10 +203,7 @@ class AppBlockerService : Service() {
     private fun launchAppWithAction(actionType: String) {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         if (launchIntent != null) {
-            launchIntent.addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or 
-                Intent.FLAG_ACTIVITY_SINGLE_TOP
-            )
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             launchIntent.putExtra(actionType, true)
             startActivity(launchIntent)
         }

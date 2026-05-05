@@ -4,11 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:rotina_kids_plus/core/utils/app_radar_service.dart';
 import '../../../data/models/child_model.dart';
-import '../../../data/services/firestore_providers.dart'
-    hide todayTasksStreamProvider;
+import '../../../data/services/firestore_providers.dart' hide todayTasksStreamProvider;
+import '../../../data/services/firestore_providers.dart';
 import '../../../data/services/reward_providers.dart';
-import '../../../data/services/child_action_providers.dart';
+import '../../../data/services/child_action_providers.dart' hide todayTasksStreamProvider;
 import '../../../data/services/child_providers.dart';
 import '../../../core/utils/tts_service.dart';
 
@@ -40,6 +41,11 @@ class ChildDashboardScreen extends ConsumerWidget {
         body: Center(child: Text('Nenhuma criança selecionada.')),
       );
     }
+
+    // ============================================================
+    // LIGANDO O RADAR DA CRIANÇA AQUI!
+    // ============================================================
+    AppRadarService().startChildRadar(activeSession.id);
 
     return _ChildDashboardInner(
       key: ValueKey(activeSession.id),

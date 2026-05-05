@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class ChildModel {
   final String id;
   final String parentId;
@@ -17,9 +19,10 @@ class ChildModel {
   final int timeBalance;
   final int xpToMinutesRate;
   final List<String> blockedApps;
-
-  // --- NOVO CAMPO: E-mail próprio da criança ---
   final String? childEmail;
+
+  // NOVO CAMPO: Guarda a última vez que o motor enviou um sinal
+  final DateTime? lastActive;
 
   ChildModel({
     required this.id,
@@ -45,7 +48,8 @@ class ChildModel {
     this.timeBalance = 0,
     this.xpToMinutesRate = 15,
     this.blockedApps = const [],
-    this.childEmail, // Adicionado aqui
+    this.childEmail,
+    this.lastActive, // Adicionado aqui
   });
 
   Map<String, dynamic> toMap() {
@@ -68,11 +72,17 @@ class ChildModel {
       'timeBalance': timeBalance,
       'xpToMinutesRate': xpToMinutesRate,
       'blockedApps': blockedApps,
-      'childEmail': childEmail, // Adicionado aqui
+      'childEmail': childEmail,
+      'lastActive': lastActive != null ? Timestamp.fromDate(lastActive!) : null,
     };
   }
 
   factory ChildModel.fromMap(Map<String, dynamic> map, String documentId) {
+    DateTime? lastActiveDate;
+    if (map['lastActive'] != null) {
+      lastActiveDate = (map['lastActive'] as Timestamp).toDate();
+    }
+
     return ChildModel(
       id: documentId,
       parentId: map['parentId'] ?? '',
@@ -97,7 +107,8 @@ class ChildModel {
       timeBalance: map['timeBalance']?.toInt() ?? 0,
       xpToMinutesRate: map['xpToMinutesRate']?.toInt() ?? 15,
       blockedApps: List<String>.from(map['blockedApps'] ?? []),
-      childEmail: map['childEmail'], // Adicionado aqui
+      childEmail: map['childEmail'],
+      lastActive: lastActiveDate,
     );
   }
 }
