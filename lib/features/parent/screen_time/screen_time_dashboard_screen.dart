@@ -221,6 +221,14 @@ class _ScreenTimeDashboardScreenState
           .doc(child.id)
           .update({'timeBalance': FieldValue.increment(bonusMinutes)});
 
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'childId': child.id,
+        'title': '🎁 Presente Surpresa!',
+        'body': 'Você ganhou +$bonusMinutes minutos de tela dos seus pais!',
+        'type': 'bonus_time',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
       await _monitoringService.syncRulesToEngine(
         deviceMode: _currentDeviceMode,
         timeBalance: child.timeBalance + bonusMinutes,

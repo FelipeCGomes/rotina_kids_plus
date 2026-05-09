@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart'; // IMPORT NOVO: Para o Flutter entender o Timestamp
+
 class TaskModel {
   final String id;
   final String childId;
@@ -26,8 +28,7 @@ class TaskModel {
     required this.startDate,
     required this.time,
     required this.xpReward,
-    this.status =
-        'pending', // Este status vai ser ignorado pelo dashboard da criança
+    this.status = 'pending',
     this.requiresApproval = true,
     this.endTime,
     this.isRecurring = false,
@@ -59,6 +60,33 @@ class TaskModel {
   }
 
   factory TaskModel.fromMap(Map<String, dynamic> map, String documentId) {
+    // =================================================================
+    // TRADUTOR UNIVERSAL DE DATAS (O Fim do Bug do Fuso Horário)
+    // =================================================================
+    DateTime parseDate(dynamic dateData) {
+      if (dateData == null) return DateTime.now();
+
+      // Se vier em formato de Relógio do Firebase
+      if (dateData is Timestamp) return dateData.toDate();
+
+      try {
+        String dateStr = dateData.toString();
+        // Se vier com o fuso horário UTC acoplado (A letra 'T')
+        if (dateStr.contains('T')) {
+          final datePart = dateStr.split('T')[0];
+          final parts = datePart.split('-');
+          return DateTime(
+            int.parse(parts[0]),
+            int.parse(parts[1]),
+            int.parse(parts[2]),
+          );
+        }
+        return DateTime.parse(dateStr).toLocal();
+      } catch (e) {
+        return DateTime.now();
+      }
+    }
+
     return TaskModel(
       id: documentId,
       childId: map['childId'] ?? '',
@@ -66,18 +94,14 @@ class TaskModel {
       description: map['description'],
       category: map['category'] ?? 'Outros',
       period: map['period'] ?? 'Manhã',
-      startDate: map['startDate'] != null
-          ? DateTime.parse(map['startDate'])
-          : DateTime.now(),
+      startDate: parseDate(map['startDate']), // Passando pelo Tradutor!
       time: map['time'] ?? '00:00',
       xpReward: map['xpReward']?.toInt() ?? 0,
       status: map['status'] ?? 'pending',
       requiresApproval: map['requiresApproval'] ?? true,
       endTime: map['endTime'],
       isRecurring: map['isRecurring'] ?? false,
-      daysOfWeek: map['daysOfWeek'] != null
-          ? List<String>.from(map['daysOfWeek'])
-          : const [],
+      daysOfWeek: map['daysOfWeek'] ?? [],
       intervalHours: map['intervalHours']?.toInt(),
       durationInDays: map['durationInDays']?.toInt(),
     );

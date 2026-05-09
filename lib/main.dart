@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart'; // <-- Nova importação obrigatória
+import 'package:rotina_kids_plus/core/utils/fcm_service.dart';
 import 'core/utils/notification_service.dart';
 import 'firebase_options.dart';
 import 'app.dart';
@@ -15,7 +16,8 @@ void main() async {
   // <-- Carrega o dicionário de datas (meses, dias) para Português antes de desenhar o app
   await initializeDateFormatting('pt_BR', null);
   // LIGANDO O MOTOR DE NOTIFICAÇÕES AQUI!
-  await NotificationService().init();
+  // await NotificationService().init();
+  await FcmService().init();
 
   runApp(const ProviderScope(child: RotinaKidsApp()));
 }

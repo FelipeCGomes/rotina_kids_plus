@@ -2,6 +2,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
@@ -47,9 +48,9 @@
             android:name=".AppBlockerService"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
-        <property 
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" 
-                android:value="parental_control_app_blocking" />
+        <property
+            android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+            android:value="parental_control_app_blocking" />
 
         <!-- NOVO: Registra o ligador automático -->
         <receiver

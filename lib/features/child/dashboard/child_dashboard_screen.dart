@@ -4,12 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:rotina_kids_plus/core/utils/app_radar_service.dart';
+
 import '../../../data/models/child_model.dart';
-import '../../../data/services/firestore_providers.dart' hide todayTasksStreamProvider;
-import '../../../data/services/firestore_providers.dart';
 import '../../../data/services/reward_providers.dart';
-import '../../../data/services/child_action_providers.dart' hide todayTasksStreamProvider;
+import '../../../data/services/child_action_providers.dart';
 import '../../../data/services/child_providers.dart';
 import '../../../core/utils/tts_service.dart';
 
@@ -25,6 +23,7 @@ final liveActiveChildProvider = StreamProvider.family<ChildModel?, String>((
       .snapshots()
       .map((doc) {
         if (!doc.exists) return null;
+
         return ChildModel.fromMap(doc.data()!, doc.id);
       });
 });
@@ -42,11 +41,6 @@ class ChildDashboardScreen extends ConsumerWidget {
       );
     }
 
-    // ============================================================
-    // LIGANDO O RADAR DA CRIANÇA AQUI!
-    // ============================================================
-    AppRadarService().startChildRadar(activeSession.id);
-
     return _ChildDashboardInner(
       key: ValueKey(activeSession.id),
       childSession: activeSession,
@@ -56,6 +50,7 @@ class ChildDashboardScreen extends ConsumerWidget {
 
 class _ChildDashboardInner extends ConsumerStatefulWidget {
   final ChildModel childSession;
+
   const _ChildDashboardInner({super.key, required this.childSession});
 
   @override
@@ -69,9 +64,12 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
+  bool _isSendingTask = false;
+
   @override
   void initState() {
     super.initState();
+
     _tabController = TabController(length: 3, vsync: this);
 
     _pulseController = AnimationController(
@@ -101,6 +99,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
         ),
       );
     }
+
     return Icon(
       _getFallbackIcon(avatarData),
       size: size * 0.6,
@@ -132,6 +131,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
           const SizedBox.shrink(),
       transitionBuilder: (ctx, anim1, anim2, child) {
         final curvedValue = Curves.elasticOut.transform(anim1.value);
+
         return Transform.scale(
           scale: curvedValue,
           child: AlertDialog(
@@ -152,11 +152,9 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
     );
   }
 
-  // =====================================================================
-  // NOVA ANIMAÇÃO: Avisa a criança que foi enviado para os pais!
-  // =====================================================================
-  void _showSuccessAnimation(int xp) {
+  void _showSuccessAnimation() {
     HapticFeedback.heavyImpact();
+
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
@@ -166,6 +164,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
           const SizedBox.shrink(),
       transitionBuilder: (ctx, a1, a2, child) {
         final curvedValue = Curves.elasticOut.transform(a1.value);
+
         return Transform.scale(
           scale: curvedValue,
           child: AlertDialog(
@@ -204,7 +203,8 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
         );
       },
     );
-    Future.delayed(const Duration(milliseconds: 2500), () {
+
+    Future.delayed(const Duration(milliseconds: 1800), () {
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
@@ -213,6 +213,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
 
   void _showTimePurchaseAnimation(int minutes) {
     HapticFeedback.heavyImpact();
+
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
@@ -222,6 +223,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
           const SizedBox.shrink(),
       transitionBuilder: (ctx, a1, a2, child) {
         final curvedValue = Curves.elasticOut.transform(a1.value);
+
         return Transform.scale(
           scale: curvedValue,
           child: AlertDialog(
@@ -257,7 +259,8 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
         );
       },
     );
-    Future.delayed(const Duration(milliseconds: 2500), () {
+
+    Future.delayed(const Duration(milliseconds: 1800), () {
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
@@ -266,6 +269,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
 
   void _showPurchaseAnimation() {
     HapticFeedback.mediumImpact();
+
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
@@ -275,6 +279,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
           const SizedBox.shrink(),
       transitionBuilder: (ctx, a1, a2, child) {
         final curvedValue = Curves.elasticOut.transform(a1.value);
+
         return Transform.scale(
           scale: curvedValue,
           child: AlertDialog(
@@ -310,7 +315,8 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
         );
       },
     );
-    Future.delayed(const Duration(milliseconds: 2500), () {
+
+    Future.delayed(const Duration(milliseconds: 1800), () {
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
@@ -322,6 +328,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
     final liveChildAsync = ref.watch(
       liveActiveChildProvider(widget.childSession.id),
     );
+
     final ttsService = ref.read(ttsServiceProvider);
 
     return Scaffold(
@@ -336,62 +343,71 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
           },
         ),
         title: liveChildAsync.when(
-          data: (child) => Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                radius: 16,
-                child: ClipOval(
-                  child: _renderAvatar(child?.avatarId ?? '', size: 32),
+          data: (child) {
+            return Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer,
+                  radius: 16,
+                  child: ClipOval(
+                    child: _renderAvatar(child?.avatarId ?? '', size: 32),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Olá, ${child?.name ?? ''}!',
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Olá, ${child?.name ?? ''}!',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            );
+          },
           loading: () => const Text('A carregar...'),
           error: (_, _) => const Text('Erro'),
         ),
         actions: [
           liveChildAsync.when(
-            data: (child) => ScaleTransition(
-              scale: _pulseAnimation,
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Colors.amber,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 4,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.stars, color: Colors.white),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${child?.currentXp ?? 0}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        color: Colors.white,
+            data: (child) {
+              return ScaleTransition(
+                scale: _pulseAnimation,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.stars, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${child?.currentXp ?? 0}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
             loading: () => const SizedBox.shrink(),
             error: (_, _) => const SizedBox.shrink(),
           ),
@@ -426,14 +442,28 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
         children: [
           _buildMissionsTab(widget.childSession.id, ttsService),
           liveChildAsync.when(
-            data: (child) => _buildStoreTab(child!),
+            data: (child) {
+              if (child == null) {
+                return const Center(child: Text('Perfil não encontrado.'));
+              }
+
+              return _buildStoreTab(child);
+            },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) => const SizedBox.shrink(),
+            error: (_, _) =>
+                const Center(child: Text('Erro ao carregar prêmios.')),
           ),
           liveChildAsync.when(
-            data: (child) => _buildAvatarTab(child!),
+            data: (child) {
+              if (child == null) {
+                return const Center(child: Text('Perfil não encontrado.'));
+              }
+
+              return _buildAvatarTab(child);
+            },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) => const SizedBox.shrink(),
+            error: (_, _) =>
+                const Center(child: Text('Erro ao carregar avatar.')),
           ),
         ],
       ),
@@ -441,7 +471,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
   }
 
   Widget _buildMissionsTab(String childId, dynamic ttsService) {
-    final tasksAsync = ref.watch(todayTasksStreamProvider(childId));
+    final tasksAsync = ref.watch(childTodayTasksProvider(childId));
 
     return tasksAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -471,12 +501,14 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
             ),
           );
         }
+
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: tasks.length,
           itemBuilder: (context, index) {
             final task = tasks[index];
-            return TweenAnimationBuilder(
+
+            return TweenAnimationBuilder<Offset>(
               tween: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero),
               duration: Duration(milliseconds: 400 + (index * 100)),
               curve: Curves.easeOutCubic,
@@ -497,9 +529,11 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
                       color: Theme.of(context).colorScheme.primary,
                       size: 36,
                     ),
-                    onPressed: () => ttsService.speak(
-                      'Sua missão é: ${task.title}. Vale ${task.xpReward} moedas.',
-                    ),
+                    onPressed: () {
+                      ttsService.speak(
+                        'Sua missão é: ${task.title}. Vale ${task.xpReward} moedas.',
+                      );
+                    },
                   ),
                   title: Text(
                     task.title,
@@ -516,6 +550,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.grey,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(15),
                       ),
@@ -524,32 +559,59 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
                         vertical: 12,
                       ),
                     ),
-                    onPressed: () async {
-                      // ===================================================================
-                      // NOVO AVISO DE VOZ: Avisa a criança que foi para aprovação
-                      // ===================================================================
-                      ttsService.speak(
-                        'Muito bem! Missão enviada para os seus pais aprovarem.',
-                      );
-                      _showSuccessAnimation(task.xpReward);
+                    onPressed: _isSendingTask
+                        ? null
+                        : () async {
+                            setState(() => _isSendingTask = true);
 
-                      await Future.delayed(const Duration(milliseconds: 500));
-                      if (mounted) {
-                        ref
-                            .read(childActionServiceProvider)
-                            .completeTask(
-                              childId,
-                              task.id,
-                              task.title,
-                              task.xpReward,
-                            );
-                      }
-                    },
-                    child: Text(
-                      'FEITO!\n+${task.xpReward}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                            try {
+                              ttsService.speak(
+                                'Muito bem! Missão enviada para os seus pais aprovarem.',
+                              );
+
+                              await ref
+                                  .read(childActionServiceProvider)
+                                  .completeTask(
+                                    childId,
+                                    task.id,
+                                    task.title,
+                                    task.xpReward,
+                                  );
+
+                              ref.invalidate(childTodayTasksProvider(childId));
+
+                              if (mounted) {
+                                _showSuccessAnimation();
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Erro ao enviar tarefa: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            } finally {
+                              if (mounted) {
+                                setState(() => _isSendingTask = false);
+                              }
+                            }
+                          },
+                    child: _isSendingTask
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            'FEITO!\n+${task.xpReward}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
                   ),
                 ),
               ),
@@ -703,6 +765,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
                                               'timeBalance': newTimeBalance,
                                               'blockedApps': child.blockedApps,
                                               'isSessionActive': true,
+                                              'childId': child.id,
                                             });
 
                                         if (mounted) {
@@ -712,6 +775,19 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
                                         }
                                       } catch (e) {
                                         debugPrint('Erro ao comprar tempo: $e');
+
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'Erro ao comprar tempo: $e',
+                                              ),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
                                       }
                                     }
                                   : null,
@@ -760,6 +836,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
             ),
           );
         }
+
         return GridView.builder(
           physics: const NeverScrollableScrollPhysics(),
           shrinkWrap: true,
@@ -838,10 +915,24 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
                       ),
                       onPressed: canAfford
                           ? () async {
-                              _showPurchaseAnimation();
-                              await ref
-                                  .read(childActionServiceProvider)
-                                  .buyReward(child, reward);
+                              try {
+                                _showPurchaseAnimation();
+
+                                await ref
+                                    .read(childActionServiceProvider)
+                                    .buyReward(child, reward);
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Erro ao solicitar prêmio: $e',
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
                             }
                           : null,
                       child: const Text(
@@ -862,14 +953,9 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
   Widget _buildAvatarTab(ChildModel child) {
     final hasCustomAvatar = child.avatarId.contains('<svg');
 
-    // =================================================================
-    // A MÁGICA: SingleChildScrollView permite rolar a tela se o tablet deitar!
-    // =================================================================
     return SingleChildScrollView(
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: 40,
-        ), // Um respiro nas bordas
+        padding: const EdgeInsets.symmetric(vertical: 40),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -934,6 +1020,7 @@ class _ChildDashboardInnerState extends ConsumerState<_ChildDashboardInner>
 
 class ParentPinPad extends StatefulWidget {
   final VoidCallback onSuccess;
+
   const ParentPinPad({super.key, required this.onSuccess});
 
   @override
@@ -942,12 +1029,18 @@ class ParentPinPad extends StatefulWidget {
 
 class _ParentPinPadState extends State<ParentPinPad> {
   String _pin = '';
+
+  /// Atenção:
+  /// Este PIN ainda está fixo.
+  /// Depois o ideal é buscar o PIN do responsável no Firestore.
   final String _correctPin = '1234';
+
   bool _hasError = false;
 
   void _onKeyPressed(String number) {
     if (_pin.length < 4) {
       HapticFeedback.selectionClick();
+
       setState(() {
         _pin += number;
         _hasError = false;
@@ -962,6 +1055,7 @@ class _ParentPinPadState extends State<ParentPinPad> {
   void _onDeletePressed() {
     if (_pin.isNotEmpty) {
       HapticFeedback.lightImpact();
+
       setState(() {
         _pin = _pin.substring(0, _pin.length - 1);
         _hasError = false;
@@ -969,7 +1063,7 @@ class _ParentPinPadState extends State<ParentPinPad> {
     }
   }
 
-  void _validatePin() async {
+  Future<void> _validatePin() async {
     await Future.delayed(const Duration(milliseconds: 300));
 
     if (_pin == _correctPin) {
@@ -977,6 +1071,7 @@ class _ParentPinPadState extends State<ParentPinPad> {
       widget.onSuccess();
     } else {
       HapticFeedback.vibrate();
+
       setState(() {
         _hasError = true;
         _pin = '';
@@ -986,9 +1081,6 @@ class _ParentPinPadState extends State<ParentPinPad> {
 
   @override
   Widget build(BuildContext context) {
-    // =================================================================
-    // A MÁGICA 2: O teclado numérico agora também rola se a tela achatar!
-    // =================================================================
     return SingleChildScrollView(
       child: Container(
         width: double.infinity,
@@ -1021,6 +1113,7 @@ class _ParentPinPadState extends State<ParentPinPad> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(4, (index) {
                 final isFilled = index < _pin.length;
+
                 return Container(
                   margin: const EdgeInsets.symmetric(horizontal: 8),
                   width: 20,
@@ -1041,7 +1134,6 @@ class _ParentPinPadState extends State<ParentPinPad> {
               }),
             ),
             const SizedBox(height: 30),
-
             Column(
               children: [
                 Row(
@@ -1080,11 +1172,11 @@ class _ParentPinPadState extends State<ParentPinPad> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildKey(''), // Espaço invisível para alinhar
+                    const SizedBox(width: 70, height: 70),
                     const SizedBox(width: 20),
                     _buildKey('0'),
                     const SizedBox(width: 20),
-                    _buildKey('X', isDelete: true),
+                    _buildDeleteKey(),
                   ],
                 ),
               ],
@@ -1095,11 +1187,9 @@ class _ParentPinPadState extends State<ParentPinPad> {
     );
   }
 
-  Widget _buildKey(String value, {bool isDelete = false}) {
-    if (value.isEmpty) return const SizedBox(width: 70, height: 70);
-
+  Widget _buildKey(String value) {
     return InkWell(
-      onTap: () => isDelete ? _onDeletePressed() : _onKeyPressed(value),
+      onTap: () => _onKeyPressed(value),
       borderRadius: BorderRadius.circular(35),
       child: Container(
         width: 70,
@@ -1109,20 +1199,36 @@ class _ParentPinPadState extends State<ParentPinPad> {
           shape: BoxShape.circle,
         ),
         child: Center(
-          child: isDelete
-              ? Icon(
-                  Icons.backspace_rounded,
-                  color: Theme.of(context).colorScheme.primary,
-                  size: 28,
-                )
-              : Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeleteKey() {
+    return InkWell(
+      onTap: _onDeletePressed,
+      borderRadius: BorderRadius.circular(35),
+      child: Container(
+        width: 70,
+        height: 70,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.errorContainer,
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: Icon(
+            Icons.backspace_rounded,
+            color: Theme.of(context).colorScheme.error,
+            size: 28,
+          ),
         ),
       ),
     );

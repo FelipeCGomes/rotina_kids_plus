@@ -8,6 +8,7 @@ import '../../data/models/child_model.dart';
 import '../../data/services/child_providers.dart';
 import '../../data/services/child_action_providers.dart'; // Importante para puxar as tarefas de hoje
 import 'blocker/services/screen_monitoring_service.dart';
+import '../../core/utils/fcm_service.dart';
 
 class ChildSelectionScreen extends ConsumerStatefulWidget {
   const ChildSelectionScreen({super.key});
@@ -63,6 +64,7 @@ class _ChildSelectionScreenState extends ConsumerState<ChildSelectionScreen> {
 
     ref.read(selectedChildProvider.notifier).state = child;
     ref.read(activeChildSessionProvider.notifier).state = child;
+    await FcmService().registerTokenForChild(child.id);
 
     if (mounted) {
       Navigator.pop(context);
@@ -228,7 +230,7 @@ class _ChildProfileCard extends ConsumerWidget {
     final hasPin = child.pinCode != null && child.pinCode!.isNotEmpty;
 
     // RÁDIO: Escuta em tempo real quantas tarefas essa criança tem pendentes hoje!
-    final pendingTasksAsync = ref.watch(todayTasksStreamProvider(child.id));
+    final pendingTasksAsync = ref.watch(childTodayTasksProvider(child.id));
     final pendingCount = pendingTasksAsync.value?.length ?? 0;
 
     return GestureDetector(
@@ -239,14 +241,12 @@ class _ChildProfileCard extends ConsumerWidget {
             clipBehavior: Clip.none,
             alignment: Alignment.topRight,
             children: [
-              // A FOTO DA CRIANÇA
               CircleAvatar(
                 radius: 50,
                 backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                 child: _renderAvatar(context, child.avatarId, size: 100),
               ),
 
-              // O CADEADO DE SENHA (Fica em baixo à direita)
               if (hasPin)
                 Positioned(
                   bottom: 0,
@@ -266,7 +266,6 @@ class _ChildProfileCard extends ConsumerWidget {
                   ),
                 ),
 
-              // A BOLINHA VERMELHA DE TAREFAS (Fica no topo à direita)
               if (pendingCount > 0)
                 Positioned(
                   top: -5,
